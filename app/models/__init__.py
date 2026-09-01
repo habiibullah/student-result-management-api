@@ -6,6 +6,7 @@ from app.models.academic_session import AcademicSession
 from app.models.term import Term
 from app.models.enrollment import Enrollment
 from app.models.subject import Subject
+from app.models.teaching_assignment import TeachingAssignment
 
 __all__ = [
     "User", 
@@ -15,5 +16,6 @@ __all__ = [
     "AcademicSession", 
     "Term",
     "Enrollment",
-    "Subject"
+    "Subject",
+    "TeachingAssignment"
 ]

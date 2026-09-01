@@ -15,6 +15,7 @@ from app.models import (
     Term,
     Enrollment,
     Subject,
+    TeachingAssignment,
 )
 
 
