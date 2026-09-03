@@ -1,10 +1,10 @@
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.core.dependencies import require_admin, get_current_user
 from app.database.connection import get_db
-from app.models import Subject, User
+from app.models import Subject, TeachingAssignment, User
 from app.schemas.subject import SubjectCreate, SubjectResponse, SubjectUpdate
 
 
@@ -162,15 +162,28 @@ def delete_subject(
     current_user: User = Depends(require_admin),
 ):
     subject = db.scalar(
-        select(Subject).where(
-            Subject.id == subject_id
-        )
+        select(Subject).where(Subject.id == subject_id)
     )
 
     if subject is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Subject not found",
+        )
+
+    assignment_count = db.scalar(
+        select(func.count(TeachingAssignment.id)).where(
+            TeachingAssignment.subject_id == subject_id
+        )
+    )
+
+    if assignment_count > 0:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=(
+                "Subject cannot be deleted because it has "
+                "teaching assignments. Delete the assignments first."
+            ),
         )
 
     db.delete(subject)

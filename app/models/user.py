@@ -49,10 +49,10 @@ class User(Base):
     )
 
     student: Mapped["Student | None"] = relationship(
-    back_populates="user",
-    uselist=False,
-)
+        back_populates="user",
+        uselist=False,
+    )
     teacher: Mapped["Teacher | None"] = relationship(
-    back_populates="user",
-    uselist=False,
-)
+        back_populates="user",
+        uselist=False,
+    )

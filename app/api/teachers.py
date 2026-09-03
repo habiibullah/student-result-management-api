@@ -1,11 +1,11 @@
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.core.dependencies import get_current_user, require_admin
 from app.core.security import hash_password
 from app.database.connection import get_db
-from app.models import Teacher, User
+from app.models import TeachingAssignment, Teacher, User
 from app.schemas.teacher import TeacherCreate, TeacherResponse, TeacherUpdate
 
 
@@ -193,3 +193,64 @@ def update_teacher(
     db.refresh(teacher)
 
     return teacher
+
+
+@router.delete(
+    "/{teacher_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+def delete_teacher(
+    teacher_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin),
+):
+    teacher = db.scalar(
+        select(Teacher).where(
+            Teacher.id == teacher_id
+        )
+    )
+
+    if teacher is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Teacher not found",
+        )
+
+    assignment_count = db.scalar(
+        select(func.count(TeachingAssignment.id)).where(
+            TeachingAssignment.teacher_id == teacher_id
+        )
+    )
+
+    if assignment_count > 0:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=(
+                "Teacher cannot be deleted because they have "
+                "teaching assignments. Deactivate the teacher instead."
+            ),
+        )
+
+    user = db.scalar(
+        select(User).where(
+            User.id == teacher.user_id
+        )
+    )
+
+    if user is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Teacher user account not found",
+        )
+
+    # Delete the Teacher first so SQLAlchemy does not
+    # try to set teachers.user_id to NULL.
+    db.delete(teacher)
+    db.flush()
+
+    # Now delete the associated User account.
+    db.delete(user)
+
+    db.commit()
+
+    return None

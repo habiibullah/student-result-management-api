@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from datetime import datetime
 
 from sqlalchemy import DateTime, ForeignKey, UniqueConstraint
@@ -47,7 +49,18 @@ class TeachingAssignment(Base):
         default=datetime.utcnow,
     )
 
-    teacher: Mapped["Teacher"] = relationship()
-    subject: Mapped["Subject"] = relationship()
-    class_: Mapped["Class"] = relationship()
-    academic_session: Mapped["AcademicSession"] = relationship()
+    teacher: Mapped["Teacher"] = relationship(
+        back_populates="teaching_assignments",
+    )
+
+    subject: Mapped["Subject"] = relationship(
+        back_populates="teaching_assignments",
+    )
+
+    class_: Mapped["Class"] = relationship(
+        back_populates="teaching_assignments",
+    )
+
+    academic_session: Mapped["AcademicSession"] = relationship(
+        back_populates="teaching_assignments",
+    )

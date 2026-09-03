@@ -5,32 +5,54 @@ from app.database.connection import SessionLocal
 from app.models import User
 
 
+TEST_USERS = [
+    {
+        "email": "teacher@example.com",
+        "password": "TeacherPassword123",
+        "role": "teacher",
+    },
+    {
+        "email": "student@example.com",
+        "password": "StudentPassword123",
+        "role": "student",
+    },
+]
+
+
 def main():
     db = SessionLocal()
 
     try:
-        email = "admin@example.com"
+        for user_data in TEST_USERS:
+            existing_user = db.scalar(
+                select(User).where(
+                    User.email == user_data["email"]
+                )
+            )
 
-        existing_user = db.scalar(
-            select(User).where(User.email == email)
-        )
+            if existing_user:
+                print(
+                    f"User already exists: {user_data['email']}"
+                )
+                continue
 
-        if existing_user:
-            print("Test admin user already exists.")
-            return
+            user = User(
+                email=user_data["email"],
+                password_hash=hash_password(
+                    user_data["password"]
+                ),
+                role=user_data["role"],
+                is_active=True,
+            )
 
-        user = User(
-            email=email,
-            password_hash=hash_password("AdminPassword123"),
-            role="admin",
-            is_active=True,
-        )
+            db.add(user)
+            db.commit()
+            db.refresh(user)
 
-        db.add(user)
-        db.commit()
-        db.refresh(user)
-
-        print(f"Test admin user created successfully. ID: {user.id}")
+            print(
+                f"Created {user.role} user: "
+                f"{user.email} (ID: {user.id})"
+            )
 
     finally:
         db.close()

@@ -52,3 +52,8 @@ class Teacher(Base):
     user: Mapped["User"] = relationship(
         back_populates="teacher",
     )
+
+    teaching_assignments: Mapped[list["TeachingAssignment"]] = relationship(
+    back_populates="teacher",
+    cascade="all, delete-orphan",
+    )

@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime
 
 from sqlalchemy import DateTime, String
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database.base import Base
 
@@ -41,4 +41,9 @@ class Class(Base):
         nullable=False,
         default=datetime.utcnow,
         onupdate=datetime.utcnow,
+    )
+
+    teaching_assignments: Mapped[list["TeachingAssignment"]] = relationship(
+        back_populates="class_",
+        cascade="all, delete-orphan",
     )

@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime
 
 from sqlalchemy import Boolean, DateTime, String
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database.base import Base
 
@@ -30,4 +30,9 @@ class AcademicSession(Base):
         DateTime,
         nullable=False,
         default=datetime.utcnow,
+    )
+
+    teaching_assignments: Mapped[list["TeachingAssignment"]] = relationship(
+        back_populates="academic_session",
+        cascade="all, delete-orphan",
     )
