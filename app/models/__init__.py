@@ -7,6 +7,8 @@ from app.models.term import Term
 from app.models.enrollment import Enrollment
 from app.models.subject import Subject
 from app.models.teaching_assignment import TeachingAssignment
+from app.models.assessment import Assessment
+from app.models.student_score import StudentScore
 
 __all__ = [
     "User", 
@@ -17,5 +19,7 @@ __all__ = [
     "Term",
     "Enrollment",
     "Subject",
-    "TeachingAssignment"
+    "TeachingAssignment",
+    "Assessment",
+    "StudentScore",
 ]

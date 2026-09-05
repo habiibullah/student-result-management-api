@@ -14,6 +14,8 @@ from app.api.academic_sessions import router as academic_sessions_router
 from app.api.students import router as students_router
 from app.api.enrollments import router as enrollments_router
 from app.api.terms import router as terms_router
+from app.api.assessments import router as assessments_router
+from app.api.student_scores import router as student_scores_router
 
 app = FastAPI(
     title="Student Result Management API",
@@ -32,6 +34,8 @@ app.include_router(academic_sessions_router)
 app.include_router(students_router)
 app.include_router(enrollments_router)
 app.include_router(terms_router)
+app.include_router(assessments_router)
+app.include_router(student_scores_router)
 
 @app.get("/")
 def root():
