@@ -56,7 +56,11 @@ def create_term(
     term = Term(
         academic_session_id=term_data.academic_session_id,
         name=term_data.name,
-    )
+        closing_date=term_data.closing_date,
+        next_term_resumption_date=(
+            term_data.next_term_resumption_date
+    ),
+)
 
     db.add(term)
 
@@ -133,6 +137,14 @@ def update_term(
 
     update_data = term_data.model_dump(exclude_unset=True)
 
+    if "closing_date" in update_data:
+        term.closing_date = update_data["closing_date"]
+
+    if "next_term_resumption_date" in update_data:
+        term.next_term_resumption_date = update_data[
+            "next_term_resumption_date"
+    ]
+
     if "name" in update_data:
         existing_term = db.scalar(
             select(Term).where(
@@ -141,6 +153,7 @@ def update_term(
                 & (Term.id != term_id)
             )
         )
+
 
         if existing_term:
             raise HTTPException(
@@ -158,6 +171,7 @@ def update_term(
             status_code=status.HTTP_409_CONFLICT,
             detail="Term already exists for this academic session",
         )
+
 
     db.refresh(term)
 

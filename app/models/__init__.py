@@ -9,6 +9,8 @@ from app.models.subject import Subject
 from app.models.teaching_assignment import TeachingAssignment
 from app.models.assessment import Assessment
 from app.models.student_score import StudentScore
+from app.models.student_attendance import StudentAttendance
+from app.models.term_report_comment import TermReportComment
 
 __all__ = [
     "User", 
@@ -22,4 +24,6 @@ __all__ = [
     "TeachingAssignment",
     "Assessment",
     "StudentScore",
+    "StudentAttendance",
+    "TermReportComment",
 ]
