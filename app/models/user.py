@@ -2,6 +2,7 @@ from datetime import datetime
 
 from sqlalchemy import Boolean, DateTime, Enum, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy import ForeignKey
 
 from app.database.base import Base
 
@@ -33,6 +34,12 @@ class User(Base):
         Boolean,
         nullable=False,
         default=True,
+    )
+
+    school_id: Mapped[int | None] = mapped_column(
+        ForeignKey("schools.id"),
+        nullable=True,
+        index=True,
     )
 
     created_at: Mapped[datetime] = mapped_column(

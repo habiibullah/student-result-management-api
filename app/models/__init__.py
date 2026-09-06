@@ -11,6 +11,7 @@ from app.models.assessment import Assessment
 from app.models.student_score import StudentScore
 from app.models.student_attendance import StudentAttendance
 from app.models.term_report_comment import TermReportComment
+from app.models.school import School
 
 __all__ = [
     "User", 

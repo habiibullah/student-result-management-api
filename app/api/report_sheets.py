@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.core.dependencies import require_admin
+from app.core.dependencies import require_school_admin
 from app.database.connection import get_db
 
 from app.models.academic_session import AcademicSession
@@ -48,7 +48,7 @@ def get_student_report_sheet(
     academic_session_id: int,
     term_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_admin),
+    current_user: User = Depends(require_school_admin),
 ):
     # ---------------------------------------------------------
     # 1. GET STUDENT
@@ -56,7 +56,9 @@ def get_student_report_sheet(
 
     student = db.scalar(
         select(Student).where(
-            Student.id == student_id
+            Student.id == student_id,
+            Student.school_id == current_user.school_id,
+
         )
     )
 
@@ -95,7 +97,8 @@ def get_student_report_sheet(
 
     class_record = db.scalar(
         select(Class).where(
-            Class.id == enrollment.class_id
+            Class.id == enrollment.class_id,
+            Class.school_id == current_user.school_id,
         )
     )
 
@@ -112,7 +115,8 @@ def get_student_report_sheet(
     academic_session = db.scalar(
         select(AcademicSession).where(
             AcademicSession.id
-            == academic_session_id
+            == academic_session_id,
+            AcademicSession.school_id == current_user.school_id,
         )
     )
 
@@ -189,7 +193,8 @@ def get_student_report_sheet(
     if subject_ids:
         subjects = db.scalars(
             select(Subject).where(
-                Subject.id.in_(subject_ids)
+                Subject.id.in_(subject_ids),
+                Subject.school_id == current_user.school_id,
             )
         ).all()
 

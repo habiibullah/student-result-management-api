@@ -57,3 +57,9 @@ class Teacher(Base):
     back_populates="teacher",
     cascade="all, delete-orphan",
     )
+
+    school_id: Mapped[int | None] = mapped_column(
+        ForeignKey("schools.id"),
+        nullable=True,
+        index=True,
+    )

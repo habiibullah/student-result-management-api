@@ -55,3 +55,9 @@ class Student(Base):
     user: Mapped["User"] = relationship(
         back_populates="student",
     )
+
+    school_id: Mapped[int | None] = mapped_column(
+        ForeignKey("schools.id"),
+        nullable=True,
+        index=True,
+    )

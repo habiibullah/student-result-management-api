@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import DateTime, String
+from sqlalchemy import DateTime, String, ForeignKey
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database.base import Base
@@ -48,4 +48,10 @@ class Subject(Base):
     teaching_assignments: Mapped[list["TeachingAssignment"]] = relationship(
         back_populates="subject",
         cascade="all, delete-orphan",
+    )
+
+    school_id: Mapped[int | None] = mapped_column(
+        ForeignKey("schools.id"),
+        nullable=True,
+        index=True,
     )
