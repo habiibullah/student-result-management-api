@@ -15,6 +15,9 @@ from app.schemas.term_report_comment import (
     TermReportCommentResponse,
     TermReportCommentUpdate,
 )
+from app.services.subscription_service import (
+    require_active_term_subscription,
+)
 
 
 router = APIRouter(
@@ -33,6 +36,10 @@ def create_term_report_comment(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_school_admin),
 ):
+    # ---------------------------------------------------------
+    # 1. VALIDATE STUDENT TENANCY
+    # ---------------------------------------------------------
+
     student = db.scalar(
         select(Student).where(
             Student.id == comment_data.student_id,
@@ -45,6 +52,10 @@ def create_term_report_comment(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Student not found",
         )
+
+    # ---------------------------------------------------------
+    # 2. VALIDATE ACADEMIC SESSION TENANCY
+    # ---------------------------------------------------------
 
     academic_session = db.scalar(
         select(AcademicSession).where(
@@ -60,6 +71,10 @@ def create_term_report_comment(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Academic session not found",
         )
+
+    # ---------------------------------------------------------
+    # 3. VALIDATE TERM TENANCY
+    # ---------------------------------------------------------
 
     term = db.scalar(
         select(Term)
@@ -92,6 +107,21 @@ def create_term_report_comment(
             ),
         )
 
+    # ---------------------------------------------------------
+    # 4. REQUIRE ACTIVE TERM SUBSCRIPTION
+    # ---------------------------------------------------------
+
+    require_active_term_subscription(
+        db=db,
+        school_id=current_user.school_id,
+        academic_session_id=comment_data.academic_session_id,
+        term_id=comment_data.term_id,
+    )
+
+    # ---------------------------------------------------------
+    # 5. CHECK FOR EXISTING COMMENT
+    # ---------------------------------------------------------
+
     existing_comment = db.scalar(
         select(TermReportComment).where(
             TermReportComment.student_id
@@ -112,6 +142,10 @@ def create_term_report_comment(
             ),
         )
 
+    # ---------------------------------------------------------
+    # 6. CREATE REPORT COMMENT
+    # ---------------------------------------------------------
+
     report_comment = TermReportComment(
         student_id=comment_data.student_id,
         academic_session_id=(
@@ -126,6 +160,7 @@ def create_term_report_comment(
 
     try:
         db.commit()
+
     except IntegrityError:
         db.rollback()
 
@@ -216,6 +251,10 @@ def update_term_report_comment(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_school_admin),
 ):
+    # ---------------------------------------------------------
+    # 1. GET TENANT-SCOPED REPORT COMMENT
+    # ---------------------------------------------------------
+
     comment = db.scalar(
         select(TermReportComment)
         .join(
@@ -240,6 +279,21 @@ def update_term_report_comment(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Report comment not found",
         )
+
+    # ---------------------------------------------------------
+    # 2. REQUIRE ACTIVE TERM SUBSCRIPTION
+    # ---------------------------------------------------------
+
+    require_active_term_subscription(
+        db=db,
+        school_id=current_user.school_id,
+        academic_session_id=comment.academic_session_id,
+        term_id=comment.term_id,
+    )
+
+    # ---------------------------------------------------------
+    # 3. UPDATE COMMENT FIELDS
+    # ---------------------------------------------------------
 
     update_data = comment_data.model_dump(
         exclude_unset=True
@@ -270,6 +324,10 @@ def delete_term_report_comment(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_school_admin),
 ):
+    # ---------------------------------------------------------
+    # 1. GET TENANT-SCOPED REPORT COMMENT
+    # ---------------------------------------------------------
+
     comment = db.scalar(
         select(TermReportComment)
         .join(
@@ -294,6 +352,21 @@ def delete_term_report_comment(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Report comment not found",
         )
+
+    # ---------------------------------------------------------
+    # 2. REQUIRE ACTIVE TERM SUBSCRIPTION
+    # ---------------------------------------------------------
+
+    require_active_term_subscription(
+        db=db,
+        school_id=current_user.school_id,
+        academic_session_id=comment.academic_session_id,
+        term_id=comment.term_id,
+    )
+
+    # ---------------------------------------------------------
+    # 3. DELETE REPORT COMMENT
+    # ---------------------------------------------------------
 
     db.delete(comment)
     db.commit()

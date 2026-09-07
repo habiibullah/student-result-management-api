@@ -15,6 +15,9 @@ from app.schemas.student_attendance import (
     StudentAttendanceResponse,
     StudentAttendanceUpdate,
 )
+from app.services.subscription_service import (
+    require_active_term_subscription,
+)
 
 
 router = APIRouter(
@@ -60,6 +63,10 @@ def create_student_attendance(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_school_admin),
 ):
+    # ---------------------------------------------------------
+    # 1. VALIDATE STUDENT TENANCY
+    # ---------------------------------------------------------
+
     student = db.scalar(
         select(Student).where(
             Student.id == attendance_data.student_id,
@@ -72,6 +79,10 @@ def create_student_attendance(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Student not found",
         )
+
+    # ---------------------------------------------------------
+    # 2. VALIDATE ACADEMIC SESSION TENANCY
+    # ---------------------------------------------------------
 
     academic_session = db.scalar(
         select(AcademicSession).where(
@@ -88,7 +99,10 @@ def create_student_attendance(
             detail="Academic session not found",
         )
 
-    # Term ownership is derived through its academic session.
+    # ---------------------------------------------------------
+    # 3. VALIDATE TERM TENANCY
+    # ---------------------------------------------------------
+
     term = db.scalar(
         select(Term)
         .join(
@@ -120,6 +134,21 @@ def create_student_attendance(
             ),
         )
 
+    # ---------------------------------------------------------
+    # 4. REQUIRE ACTIVE TERM SUBSCRIPTION
+    # ---------------------------------------------------------
+
+    require_active_term_subscription(
+        db=db,
+        school_id=current_user.school_id,
+        academic_session_id=attendance_data.academic_session_id,
+        term_id=attendance_data.term_id,
+    )
+
+    # ---------------------------------------------------------
+    # 5. CHECK FOR EXISTING ATTENDANCE
+    # ---------------------------------------------------------
+
     existing_attendance = db.scalar(
         select(StudentAttendance).where(
             StudentAttendance.student_id
@@ -140,11 +169,19 @@ def create_student_attendance(
             ),
         )
 
+    # ---------------------------------------------------------
+    # 6. VALIDATE ATTENDANCE VALUES
+    # ---------------------------------------------------------
+
     validate_attendance_values(
         attendance_data.school_days,
         attendance_data.days_present,
         attendance_data.days_absent,
     )
+
+    # ---------------------------------------------------------
+    # 7. CREATE ATTENDANCE RECORD
+    # ---------------------------------------------------------
 
     attendance = StudentAttendance(
         student_id=attendance_data.student_id,
@@ -161,6 +198,7 @@ def create_student_attendance(
 
     try:
         db.commit()
+
     except IntegrityError:
         db.rollback()
 
@@ -254,6 +292,10 @@ def update_student_attendance(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_school_admin),
 ):
+    # ---------------------------------------------------------
+    # 1. GET TENANT-SCOPED ATTENDANCE RECORD
+    # ---------------------------------------------------------
+
     attendance = db.scalar(
         select(StudentAttendance)
         .join(
@@ -278,6 +320,21 @@ def update_student_attendance(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Attendance record not found",
         )
+
+    # ---------------------------------------------------------
+    # 2. REQUIRE ACTIVE TERM SUBSCRIPTION
+    # ---------------------------------------------------------
+
+    require_active_term_subscription(
+        db=db,
+        school_id=current_user.school_id,
+        academic_session_id=attendance.academic_session_id,
+        term_id=attendance.term_id,
+    )
+
+    # ---------------------------------------------------------
+    # 3. VALIDATE UPDATED VALUES
+    # ---------------------------------------------------------
 
     update_data = attendance_data.model_dump(
         exclude_unset=True
@@ -304,6 +361,10 @@ def update_student_attendance(
         days_absent,
     )
 
+    # ---------------------------------------------------------
+    # 4. UPDATE ATTENDANCE RECORD
+    # ---------------------------------------------------------
+
     attendance.school_days = school_days
     attendance.days_present = days_present
     attendance.days_absent = days_absent
@@ -323,6 +384,10 @@ def delete_student_attendance(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_school_admin),
 ):
+    # ---------------------------------------------------------
+    # 1. GET TENANT-SCOPED ATTENDANCE RECORD
+    # ---------------------------------------------------------
+
     attendance = db.scalar(
         select(StudentAttendance)
         .join(
@@ -347,6 +412,21 @@ def delete_student_attendance(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Attendance record not found",
         )
+
+    # ---------------------------------------------------------
+    # 2. REQUIRE ACTIVE TERM SUBSCRIPTION
+    # ---------------------------------------------------------
+
+    require_active_term_subscription(
+        db=db,
+        school_id=current_user.school_id,
+        academic_session_id=attendance.academic_session_id,
+        term_id=attendance.term_id,
+    )
+
+    # ---------------------------------------------------------
+    # 3. DELETE ATTENDANCE RECORD
+    # ---------------------------------------------------------
 
     db.delete(attendance)
     db.commit()

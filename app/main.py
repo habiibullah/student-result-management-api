@@ -28,7 +28,9 @@ from app.api.subscription_plans import (
 from app.api.subscriptions import (
     router as subscriptions_router,
 )
-
+from app.api.result_publications import (
+    router as result_publications_router,
+)
 
 app = FastAPI(
     title="Student Result Management API",
@@ -57,6 +59,7 @@ app.include_router(report_sheets_router)
 app.include_router(schools_router)
 app.include_router(subscription_plans_router)
 app.include_router(subscriptions_router)
+app.include_router(result_publications_router)
 
 
 @app.get("/")

@@ -14,7 +14,7 @@ from app.models.term_report_comment import TermReportComment
 from app.models.school import School
 from app.models.subscription_plan import SubscriptionPlan
 from app.models.subscription import Subscription
-
+from app.models.result_publication import ResultPublication
 
 
 __all__ = [
@@ -33,4 +33,6 @@ __all__ = [
     "TermReportComment",
     "SubscriptionPlan",
     "Subscription",
+    "ResultPublication",
+    "School",
 ]
