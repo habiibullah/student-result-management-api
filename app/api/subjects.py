@@ -2,10 +2,17 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.core.dependencies import require_admin, get_current_user
+from app.core.dependencies import (
+    get_current_user,
+    require_school_admin,
+)
 from app.database.connection import get_db
 from app.models import Subject, TeachingAssignment, User
-from app.schemas.subject import SubjectCreate, SubjectResponse, SubjectUpdate
+from app.schemas.subject import (
+    SubjectCreate,
+    SubjectResponse,
+    SubjectUpdate,
+)
 
 
 router = APIRouter(
@@ -22,22 +29,29 @@ router = APIRouter(
 def create_subject(
     subject_data: SubjectCreate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_admin),
+    current_user: User = Depends(require_school_admin),
 ):
     existing_subject = db.scalar(
         select(Subject).where(
-            (Subject.name == subject_data.name)
-            | (Subject.code == subject_data.code)
+            Subject.school_id == current_user.school_id,
+            (
+                (Subject.name == subject_data.name)
+                | (Subject.code == subject_data.code)
+            ),
         )
     )
 
     if existing_subject:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail="Subject with this name or code already exists",
+            detail=(
+                "Subject with this name or code "
+                "already exists in this school"
+            ),
         )
 
     subject = Subject(
+        school_id=current_user.school_id,
         name=subject_data.name,
         code=subject_data.code,
         description=subject_data.description,
@@ -58,8 +72,18 @@ def get_subjects(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    if current_user.school_id is None:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="User is not assigned to a school",
+        )
+
     subjects = db.scalars(
-        select(Subject).order_by(Subject.name)
+        select(Subject)
+        .where(
+            Subject.school_id == current_user.school_id
+        )
+        .order_by(Subject.name)
     ).all()
 
     return subjects
@@ -74,9 +98,16 @@ def get_subject(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    if current_user.school_id is None:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="User is not assigned to a school",
+        )
+
     subject = db.scalar(
         select(Subject).where(
-            Subject.id == subject_id
+            Subject.id == subject_id,
+            Subject.school_id == current_user.school_id,
         )
     )
 
@@ -97,11 +128,12 @@ def update_subject(
     subject_id: int,
     subject_data: SubjectUpdate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_admin),
+    current_user: User = Depends(require_school_admin),
 ):
     subject = db.scalar(
         select(Subject).where(
-            Subject.id == subject_id
+            Subject.id == subject_id,
+            Subject.school_id == current_user.school_id,
         )
     )
 
@@ -114,15 +146,19 @@ def update_subject(
     if subject_data.name is not None:
         existing_subject = db.scalar(
             select(Subject).where(
-                (Subject.name == subject_data.name)
-                & (Subject.id != subject_id)
+                Subject.school_id == current_user.school_id,
+                Subject.name == subject_data.name,
+                Subject.id != subject_id,
             )
         )
 
         if existing_subject:
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
-                detail="Subject with this name already exists",
+                detail=(
+                    "Subject with this name "
+                    "already exists in this school"
+                ),
             )
 
         subject.name = subject_data.name
@@ -130,15 +166,19 @@ def update_subject(
     if subject_data.code is not None:
         existing_subject = db.scalar(
             select(Subject).where(
-                (Subject.code == subject_data.code)
-                & (Subject.id != subject_id)
+                Subject.school_id == current_user.school_id,
+                Subject.code == subject_data.code,
+                Subject.id != subject_id,
             )
         )
 
         if existing_subject:
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
-                detail="Subject with this code already exists",
+                detail=(
+                    "Subject with this code "
+                    "already exists in this school"
+                ),
             )
 
         subject.code = subject_data.code
@@ -159,10 +199,13 @@ def update_subject(
 def delete_subject(
     subject_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_admin),
+    current_user: User = Depends(require_school_admin),
 ):
     subject = db.scalar(
-        select(Subject).where(Subject.id == subject_id)
+        select(Subject).where(
+            Subject.id == subject_id,
+            Subject.school_id == current_user.school_id,
+        )
     )
 
     if subject is None:
@@ -173,7 +216,7 @@ def delete_subject(
 
     assignment_count = db.scalar(
         select(func.count(TeachingAssignment.id)).where(
-            TeachingAssignment.subject_id == subject_id
+            TeachingAssignment.subject_id == subject.id
         )
     )
 

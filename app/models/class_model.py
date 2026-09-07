@@ -2,7 +2,12 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import DateTime, String, ForeignKey
+from sqlalchemy import (
+    DateTime,
+    ForeignKey,
+    String,
+    UniqueConstraint,
+)
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database.base import Base
@@ -11,7 +16,23 @@ from app.database.base import Base
 class Class(Base):
     __tablename__ = "classes"
 
-    id: Mapped[int] = mapped_column(primary_key=True)
+    __table_args__ = (
+        UniqueConstraint(
+            "school_id",
+            "code",
+            name="uq_classes_school_code",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(
+        primary_key=True,
+    )
+
+    school_id: Mapped[int] = mapped_column(
+        ForeignKey("schools.id"),
+        nullable=False,
+        index=True,
+    )
 
     name: Mapped[str] = mapped_column(
         String(100),
@@ -20,7 +41,6 @@ class Class(Base):
 
     code: Mapped[str] = mapped_column(
         String(50),
-        unique=True,
         nullable=False,
         index=True,
     )
@@ -46,10 +66,4 @@ class Class(Base):
     teaching_assignments: Mapped[list["TeachingAssignment"]] = relationship(
         back_populates="class_",
         cascade="all, delete-orphan",
-    )
-
-    school_id: Mapped[int | None] = mapped_column(
-        ForeignKey("schools.id"),
-        nullable=True,
-        index=True,
     )

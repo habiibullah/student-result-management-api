@@ -1,8 +1,14 @@
 from __future__ import annotations
 
-from datetime import datetime, date
+from datetime import date, datetime
 
-from sqlalchemy import Date, DateTime, ForeignKey, String
+from sqlalchemy import (
+    Date,
+    DateTime,
+    ForeignKey,
+    String,
+    UniqueConstraint,
+)
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database.base import Base
@@ -11,17 +17,35 @@ from app.database.base import Base
 class Student(Base):
     __tablename__ = "students"
 
-    id: Mapped[int] = mapped_column(primary_key=True)
+    __table_args__ = (
+        UniqueConstraint(
+            "school_id",
+            "admission_number",
+            name="uq_students_school_admission_number",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(
+        primary_key=True,
+    )
 
     user_id: Mapped[int] = mapped_column(
-        ForeignKey("users.id", ondelete="CASCADE"),
+        ForeignKey(
+            "users.id",
+            ondelete="CASCADE",
+        ),
         unique=True,
         nullable=False,
     )
 
+    school_id: Mapped[int] = mapped_column(
+        ForeignKey("schools.id"),
+        nullable=False,
+        index=True,
+    )
+
     admission_number: Mapped[str] = mapped_column(
         String(50),
-        unique=True,
         nullable=False,
         index=True,
     )
@@ -54,10 +78,4 @@ class Student(Base):
 
     user: Mapped["User"] = relationship(
         back_populates="student",
-    )
-
-    school_id: Mapped[int | None] = mapped_column(
-        ForeignKey("schools.id"),
-        nullable=True,
-        index=True,
     )

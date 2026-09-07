@@ -3,7 +3,7 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app.core.dependencies import require_admin
+from app.core.dependencies import require_school_admin
 from app.database.connection import get_db
 from app.models import (
     AcademicSession,
@@ -32,12 +32,12 @@ router = APIRouter(
 def create_enrollment(
     enrollment_data: EnrollmentCreate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_admin),
+    current_user: User = Depends(require_school_admin),
 ):
-    # Check student exists
     student = db.scalar(
         select(Student).where(
-            Student.id == enrollment_data.student_id
+            Student.id == enrollment_data.student_id,
+            Student.school_id == current_user.school_id,
         )
     )
 
@@ -47,10 +47,10 @@ def create_enrollment(
             detail="Student not found",
         )
 
-    # Check class exists
     class_obj = db.scalar(
         select(Class).where(
-            Class.id == enrollment_data.class_id
+            Class.id == enrollment_data.class_id,
+            Class.school_id == current_user.school_id,
         )
     )
 
@@ -60,10 +60,12 @@ def create_enrollment(
             detail="Class not found",
         )
 
-    # Check academic session exists
     academic_session = db.scalar(
         select(AcademicSession).where(
-            AcademicSession.id == enrollment_data.academic_session_id
+            AcademicSession.id
+            == enrollment_data.academic_session_id,
+            AcademicSession.school_id
+            == current_user.school_id,
         )
     )
 
@@ -73,22 +75,22 @@ def create_enrollment(
             detail="Academic session not found",
         )
 
-    # Check for duplicate enrollment
     existing_enrollment = db.scalar(
         select(Enrollment).where(
-            (Enrollment.student_id == enrollment_data.student_id)
-            & (Enrollment.class_id == enrollment_data.class_id)
-            & (
-                Enrollment.academic_session_id
-                == enrollment_data.academic_session_id
-            )
+            Enrollment.student_id == enrollment_data.student_id,
+            Enrollment.class_id == enrollment_data.class_id,
+            Enrollment.academic_session_id
+            == enrollment_data.academic_session_id,
         )
     )
 
     if existing_enrollment:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail="Student is already enrolled in this class for this academic session",
+            detail=(
+                "Student is already enrolled in this class "
+                "for this academic session"
+            ),
         )
 
     enrollment = Enrollment(
@@ -105,7 +107,10 @@ def create_enrollment(
         db.rollback()
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail="Student is already enrolled in this class for this academic session",
+            detail=(
+                "Student is already enrolled in this class "
+                "for this academic session"
+            ),
         )
 
     db.refresh(enrollment)
@@ -119,10 +124,29 @@ def create_enrollment(
 )
 def get_enrollments(
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_admin),
+    current_user: User = Depends(require_school_admin),
 ):
     enrollments = db.scalars(
-        select(Enrollment).order_by(Enrollment.id)
+        select(Enrollment)
+        .join(
+            Student,
+            Enrollment.student_id == Student.id,
+        )
+        .join(
+            Class,
+            Enrollment.class_id == Class.id,
+        )
+        .join(
+            AcademicSession,
+            Enrollment.academic_session_id
+            == AcademicSession.id,
+        )
+        .where(
+            Student.school_id == current_user.school_id,
+            Class.school_id == current_user.school_id,
+            AcademicSession.school_id == current_user.school_id,
+        )
+        .order_by(Enrollment.id)
     ).all()
 
     return enrollments
@@ -135,11 +159,28 @@ def get_enrollments(
 def get_enrollment(
     enrollment_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_admin),
+    current_user: User = Depends(require_school_admin),
 ):
     enrollment = db.scalar(
-        select(Enrollment).where(
-            Enrollment.id == enrollment_id
+        select(Enrollment)
+        .join(
+            Student,
+            Enrollment.student_id == Student.id,
+        )
+        .join(
+            Class,
+            Enrollment.class_id == Class.id,
+        )
+        .join(
+            AcademicSession,
+            Enrollment.academic_session_id
+            == AcademicSession.id,
+        )
+        .where(
+            Enrollment.id == enrollment_id,
+            Student.school_id == current_user.school_id,
+            Class.school_id == current_user.school_id,
+            AcademicSession.school_id == current_user.school_id,
         )
     )
 
@@ -160,11 +201,28 @@ def update_enrollment(
     enrollment_id: int,
     enrollment_data: EnrollmentUpdate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_admin),
+    current_user: User = Depends(require_school_admin),
 ):
     enrollment = db.scalar(
-        select(Enrollment).where(
-            Enrollment.id == enrollment_id
+        select(Enrollment)
+        .join(
+            Student,
+            Enrollment.student_id == Student.id,
+        )
+        .join(
+            Class,
+            Enrollment.class_id == Class.id,
+        )
+        .join(
+            AcademicSession,
+            Enrollment.academic_session_id
+            == AcademicSession.id,
+        )
+        .where(
+            Enrollment.id == enrollment_id,
+            Student.school_id == current_user.school_id,
+            Class.school_id == current_user.school_id,
+            AcademicSession.school_id == current_user.school_id,
         )
     )
 
@@ -178,7 +236,6 @@ def update_enrollment(
         exclude_unset=True
     )
 
-    # Determine the values that will exist after the update.
     new_class_id = update_data.get(
         "class_id",
         enrollment.class_id,
@@ -189,11 +246,11 @@ def update_enrollment(
         enrollment.academic_session_id,
     )
 
-    # Validate class if it is being changed.
     if "class_id" in update_data:
         class_obj = db.scalar(
             select(Class).where(
-                Class.id == new_class_id
+                Class.id == new_class_id,
+                Class.school_id == current_user.school_id,
             )
         )
 
@@ -203,11 +260,12 @@ def update_enrollment(
                 detail="Class not found",
             )
 
-    # Validate academic session if it is being changed.
     if "academic_session_id" in update_data:
         academic_session = db.scalar(
             select(AcademicSession).where(
-                AcademicSession.id == new_academic_session_id
+                AcademicSession.id == new_academic_session_id,
+                AcademicSession.school_id
+                == current_user.school_id,
             )
         )
 
@@ -217,16 +275,13 @@ def update_enrollment(
                 detail="Academic session not found",
             )
 
-    # Check whether the update would create a duplicate.
     duplicate = db.scalar(
         select(Enrollment).where(
-            (Enrollment.student_id == enrollment.student_id)
-            & (Enrollment.class_id == new_class_id)
-            & (
-                Enrollment.academic_session_id
-                == new_academic_session_id
-            )
-            & (Enrollment.id != enrollment_id)
+            Enrollment.student_id == enrollment.student_id,
+            Enrollment.class_id == new_class_id,
+            Enrollment.academic_session_id
+            == new_academic_session_id,
+            Enrollment.id != enrollment_id,
         )
     )
 
@@ -243,7 +298,9 @@ def update_enrollment(
         enrollment.class_id = new_class_id
 
     if "academic_session_id" in update_data:
-        enrollment.academic_session_id = new_academic_session_id
+        enrollment.academic_session_id = (
+            new_academic_session_id
+        )
 
     try:
         db.commit()
@@ -269,11 +326,28 @@ def update_enrollment(
 def delete_enrollment(
     enrollment_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_admin),
+    current_user: User = Depends(require_school_admin),
 ):
     enrollment = db.scalar(
-        select(Enrollment).where(
-            Enrollment.id == enrollment_id
+        select(Enrollment)
+        .join(
+            Student,
+            Enrollment.student_id == Student.id,
+        )
+        .join(
+            Class,
+            Enrollment.class_id == Class.id,
+        )
+        .join(
+            AcademicSession,
+            Enrollment.academic_session_id
+            == AcademicSession.id,
+        )
+        .where(
+            Enrollment.id == enrollment_id,
+            Student.school_id == current_user.school_id,
+            Class.school_id == current_user.school_id,
+            AcademicSession.school_id == current_user.school_id,
         )
     )
 

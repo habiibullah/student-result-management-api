@@ -3,7 +3,7 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app.core.dependencies import require_admin
+from app.core.dependencies import require_school_admin
 from app.database.connection import get_db
 from app.models.academic_session import AcademicSession
 from app.models.student import Student
@@ -30,19 +30,19 @@ def validate_attendance_values(
 ):
     if days_present > school_days:
         raise HTTPException(
-            status_code=400,
+            status_code=status.HTTP_400_BAD_REQUEST,
             detail="Days present cannot exceed school days",
         )
 
     if days_absent > school_days:
         raise HTTPException(
-            status_code=400,
+            status_code=status.HTTP_400_BAD_REQUEST,
             detail="Days absent cannot exceed school days",
         )
 
     if days_present + days_absent != school_days:
         raise HTTPException(
-            status_code=400,
+            status_code=status.HTTP_400_BAD_REQUEST,
             detail=(
                 "Days present plus days absent "
                 "must equal school days"
@@ -58,42 +58,53 @@ def validate_attendance_values(
 def create_student_attendance(
     attendance_data: StudentAttendanceCreate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_admin),
+    current_user: User = Depends(require_school_admin),
 ):
     student = db.scalar(
         select(Student).where(
-            Student.id == attendance_data.student_id
+            Student.id == attendance_data.student_id,
+            Student.school_id == current_user.school_id,
         )
     )
 
     if student is None:
         raise HTTPException(
-            status_code=404,
+            status_code=status.HTTP_404_NOT_FOUND,
             detail="Student not found",
         )
 
     academic_session = db.scalar(
         select(AcademicSession).where(
             AcademicSession.id
-            == attendance_data.academic_session_id
+            == attendance_data.academic_session_id,
+            AcademicSession.school_id
+            == current_user.school_id,
         )
     )
 
     if academic_session is None:
         raise HTTPException(
-            status_code=404,
+            status_code=status.HTTP_404_NOT_FOUND,
             detail="Academic session not found",
         )
 
+    # Term ownership is derived through its academic session.
     term = db.scalar(
-        select(Term).where(
-            Term.id == attendance_data.term_id
+        select(Term)
+        .join(
+            AcademicSession,
+            Term.academic_session_id == AcademicSession.id,
+        )
+        .where(
+            Term.id == attendance_data.term_id,
+            AcademicSession.school_id
+            == current_user.school_id,
         )
     )
 
     if term is None:
         raise HTTPException(
-            status_code=404,
+            status_code=status.HTTP_404_NOT_FOUND,
             detail="Term not found",
         )
 
@@ -102,7 +113,7 @@ def create_student_attendance(
         != attendance_data.academic_session_id
     ):
         raise HTTPException(
-            status_code=400,
+            status_code=status.HTTP_400_BAD_REQUEST,
             detail=(
                 "Term does not belong to the selected "
                 "academic session"
@@ -111,24 +122,18 @@ def create_student_attendance(
 
     existing_attendance = db.scalar(
         select(StudentAttendance).where(
-            (
-                StudentAttendance.student_id
-                == attendance_data.student_id
-            )
-            & (
-                StudentAttendance.academic_session_id
-                == attendance_data.academic_session_id
-            )
-            & (
-                StudentAttendance.term_id
-                == attendance_data.term_id
-            )
+            StudentAttendance.student_id
+            == attendance_data.student_id,
+            StudentAttendance.academic_session_id
+            == attendance_data.academic_session_id,
+            StudentAttendance.term_id
+            == attendance_data.term_id,
         )
     )
 
     if existing_attendance:
         raise HTTPException(
-            status_code=409,
+            status_code=status.HTTP_409_CONFLICT,
             detail=(
                 "Attendance already exists for this "
                 "student, session and term"
@@ -160,7 +165,7 @@ def create_student_attendance(
         db.rollback()
 
         raise HTTPException(
-            status_code=409,
+            status_code=status.HTTP_409_CONFLICT,
             detail=(
                 "Attendance already exists for this "
                 "student, session and term"
@@ -178,12 +183,25 @@ def create_student_attendance(
 )
 def get_student_attendance_records(
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_admin),
+    current_user: User = Depends(require_school_admin),
 ):
     attendance_records = db.scalars(
-        select(StudentAttendance).order_by(
-            StudentAttendance.id
+        select(StudentAttendance)
+        .join(
+            Student,
+            StudentAttendance.student_id == Student.id,
         )
+        .join(
+            AcademicSession,
+            StudentAttendance.academic_session_id
+            == AcademicSession.id,
+        )
+        .where(
+            Student.school_id == current_user.school_id,
+            AcademicSession.school_id
+            == current_user.school_id,
+        )
+        .order_by(StudentAttendance.id)
     ).all()
 
     return attendance_records
@@ -196,17 +214,30 @@ def get_student_attendance_records(
 def get_student_attendance(
     attendance_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_admin),
+    current_user: User = Depends(require_school_admin),
 ):
     attendance = db.scalar(
-        select(StudentAttendance).where(
-            StudentAttendance.id == attendance_id
+        select(StudentAttendance)
+        .join(
+            Student,
+            StudentAttendance.student_id == Student.id,
+        )
+        .join(
+            AcademicSession,
+            StudentAttendance.academic_session_id
+            == AcademicSession.id,
+        )
+        .where(
+            StudentAttendance.id == attendance_id,
+            Student.school_id == current_user.school_id,
+            AcademicSession.school_id
+            == current_user.school_id,
         )
     )
 
     if attendance is None:
         raise HTTPException(
-            status_code=404,
+            status_code=status.HTTP_404_NOT_FOUND,
             detail="Attendance record not found",
         )
 
@@ -221,17 +252,30 @@ def update_student_attendance(
     attendance_id: int,
     attendance_data: StudentAttendanceUpdate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_admin),
+    current_user: User = Depends(require_school_admin),
 ):
     attendance = db.scalar(
-        select(StudentAttendance).where(
-            StudentAttendance.id == attendance_id
+        select(StudentAttendance)
+        .join(
+            Student,
+            StudentAttendance.student_id == Student.id,
+        )
+        .join(
+            AcademicSession,
+            StudentAttendance.academic_session_id
+            == AcademicSession.id,
+        )
+        .where(
+            StudentAttendance.id == attendance_id,
+            Student.school_id == current_user.school_id,
+            AcademicSession.school_id
+            == current_user.school_id,
         )
     )
 
     if attendance is None:
         raise HTTPException(
-            status_code=404,
+            status_code=status.HTTP_404_NOT_FOUND,
             detail="Attendance record not found",
         )
 
@@ -277,17 +321,30 @@ def update_student_attendance(
 def delete_student_attendance(
     attendance_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_admin),
+    current_user: User = Depends(require_school_admin),
 ):
     attendance = db.scalar(
-        select(StudentAttendance).where(
-            StudentAttendance.id == attendance_id
+        select(StudentAttendance)
+        .join(
+            Student,
+            StudentAttendance.student_id == Student.id,
+        )
+        .join(
+            AcademicSession,
+            StudentAttendance.academic_session_id
+            == AcademicSession.id,
+        )
+        .where(
+            StudentAttendance.id == attendance_id,
+            Student.school_id == current_user.school_id,
+            AcademicSession.school_id
+            == current_user.school_id,
         )
     )
 
     if attendance is None:
         raise HTTPException(
-            status_code=404,
+            status_code=status.HTTP_404_NOT_FOUND,
             detail="Attendance record not found",
         )
 

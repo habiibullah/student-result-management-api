@@ -3,7 +3,7 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app.core.dependencies import require_admin
+from app.core.dependencies import require_school_admin
 from app.database.connection import get_db
 from app.models import (
     AcademicSession,
@@ -32,11 +32,12 @@ router = APIRouter(
 def create_teaching_assignment(
     assignment_data: TeachingAssignmentCreate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_admin),
+    current_user: User = Depends(require_school_admin),
 ):
     teacher = db.scalar(
         select(Teacher).where(
-            Teacher.id == assignment_data.teacher_id
+            Teacher.id == assignment_data.teacher_id,
+            Teacher.school_id == current_user.school_id,
         )
     )
 
@@ -48,7 +49,8 @@ def create_teaching_assignment(
 
     subject = db.scalar(
         select(Subject).where(
-            Subject.id == assignment_data.subject_id
+            Subject.id == assignment_data.subject_id,
+            Subject.school_id == current_user.school_id,
         )
     )
 
@@ -60,7 +62,8 @@ def create_teaching_assignment(
 
     class_ = db.scalar(
         select(Class).where(
-            Class.id == assignment_data.class_id
+            Class.id == assignment_data.class_id,
+            Class.school_id == current_user.school_id,
         )
     )
 
@@ -72,7 +75,10 @@ def create_teaching_assignment(
 
     academic_session = db.scalar(
         select(AcademicSession).where(
-            AcademicSession.id == assignment_data.academic_session_id
+            AcademicSession.id
+            == assignment_data.academic_session_id,
+            AcademicSession.school_id
+            == current_user.school_id,
         )
     )
 
@@ -84,13 +90,14 @@ def create_teaching_assignment(
 
     existing_assignment = db.scalar(
         select(TeachingAssignment).where(
-            (TeachingAssignment.teacher_id == assignment_data.teacher_id)
-            & (TeachingAssignment.subject_id == assignment_data.subject_id)
-            & (TeachingAssignment.class_id == assignment_data.class_id)
-            & (
-                TeachingAssignment.academic_session_id
-                == assignment_data.academic_session_id
-            )
+            TeachingAssignment.teacher_id
+            == assignment_data.teacher_id,
+            TeachingAssignment.subject_id
+            == assignment_data.subject_id,
+            TeachingAssignment.class_id
+            == assignment_data.class_id,
+            TeachingAssignment.academic_session_id
+            == assignment_data.academic_session_id,
         )
     )
 
@@ -113,6 +120,7 @@ def create_teaching_assignment(
         db.commit()
     except IntegrityError:
         db.rollback()
+
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail="This teaching assignment already exists",
@@ -129,12 +137,34 @@ def create_teaching_assignment(
 )
 def get_teaching_assignments(
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_admin),
+    current_user: User = Depends(require_school_admin),
 ):
     assignments = db.scalars(
-        select(TeachingAssignment).order_by(
-            TeachingAssignment.id
+        select(TeachingAssignment)
+        .join(
+            Teacher,
+            TeachingAssignment.teacher_id == Teacher.id,
         )
+        .join(
+            Subject,
+            TeachingAssignment.subject_id == Subject.id,
+        )
+        .join(
+            Class,
+            TeachingAssignment.class_id == Class.id,
+        )
+        .join(
+            AcademicSession,
+            TeachingAssignment.academic_session_id
+            == AcademicSession.id,
+        )
+        .where(
+            Teacher.school_id == current_user.school_id,
+            Subject.school_id == current_user.school_id,
+            Class.school_id == current_user.school_id,
+            AcademicSession.school_id == current_user.school_id,
+        )
+        .order_by(TeachingAssignment.id)
     ).all()
 
     return assignments
@@ -147,11 +177,33 @@ def get_teaching_assignments(
 def get_teaching_assignment(
     assignment_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_admin),
+    current_user: User = Depends(require_school_admin),
 ):
     assignment = db.scalar(
-        select(TeachingAssignment).where(
-            TeachingAssignment.id == assignment_id
+        select(TeachingAssignment)
+        .join(
+            Teacher,
+            TeachingAssignment.teacher_id == Teacher.id,
+        )
+        .join(
+            Subject,
+            TeachingAssignment.subject_id == Subject.id,
+        )
+        .join(
+            Class,
+            TeachingAssignment.class_id == Class.id,
+        )
+        .join(
+            AcademicSession,
+            TeachingAssignment.academic_session_id
+            == AcademicSession.id,
+        )
+        .where(
+            TeachingAssignment.id == assignment_id,
+            Teacher.school_id == current_user.school_id,
+            Subject.school_id == current_user.school_id,
+            Class.school_id == current_user.school_id,
+            AcademicSession.school_id == current_user.school_id,
         )
     )
 
@@ -171,11 +223,33 @@ def get_teaching_assignment(
 def delete_teaching_assignment(
     assignment_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_admin),
+    current_user: User = Depends(require_school_admin),
 ):
     assignment = db.scalar(
-        select(TeachingAssignment).where(
-            TeachingAssignment.id == assignment_id
+        select(TeachingAssignment)
+        .join(
+            Teacher,
+            TeachingAssignment.teacher_id == Teacher.id,
+        )
+        .join(
+            Subject,
+            TeachingAssignment.subject_id == Subject.id,
+        )
+        .join(
+            Class,
+            TeachingAssignment.class_id == Class.id,
+        )
+        .join(
+            AcademicSession,
+            TeachingAssignment.academic_session_id
+            == AcademicSession.id,
+        )
+        .where(
+            TeachingAssignment.id == assignment_id,
+            Teacher.school_id == current_user.school_id,
+            Subject.school_id == current_user.school_id,
+            Class.school_id == current_user.school_id,
+            AcademicSession.school_id == current_user.school_id,
         )
     )
 

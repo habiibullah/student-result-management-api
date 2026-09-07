@@ -3,7 +3,7 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app.core.dependencies import require_admin
+from app.core.dependencies import require_school_admin
 from app.database.connection import get_db
 from app.models.academic_session import AcademicSession
 from app.models.student import Student
@@ -31,42 +31,52 @@ router = APIRouter(
 def create_term_report_comment(
     comment_data: TermReportCommentCreate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_admin),
+    current_user: User = Depends(require_school_admin),
 ):
     student = db.scalar(
         select(Student).where(
-            Student.id == comment_data.student_id
+            Student.id == comment_data.student_id,
+            Student.school_id == current_user.school_id,
         )
     )
 
     if student is None:
         raise HTTPException(
-            status_code=404,
+            status_code=status.HTTP_404_NOT_FOUND,
             detail="Student not found",
         )
 
     academic_session = db.scalar(
         select(AcademicSession).where(
             AcademicSession.id
-            == comment_data.academic_session_id
+            == comment_data.academic_session_id,
+            AcademicSession.school_id
+            == current_user.school_id,
         )
     )
 
     if academic_session is None:
         raise HTTPException(
-            status_code=404,
+            status_code=status.HTTP_404_NOT_FOUND,
             detail="Academic session not found",
         )
 
     term = db.scalar(
-        select(Term).where(
-            Term.id == comment_data.term_id
+        select(Term)
+        .join(
+            AcademicSession,
+            Term.academic_session_id == AcademicSession.id,
+        )
+        .where(
+            Term.id == comment_data.term_id,
+            AcademicSession.school_id
+            == current_user.school_id,
         )
     )
 
     if term is None:
         raise HTTPException(
-            status_code=404,
+            status_code=status.HTTP_404_NOT_FOUND,
             detail="Term not found",
         )
 
@@ -75,7 +85,7 @@ def create_term_report_comment(
         != comment_data.academic_session_id
     ):
         raise HTTPException(
-            status_code=400,
+            status_code=status.HTTP_400_BAD_REQUEST,
             detail=(
                 "Term does not belong to the selected "
                 "academic session"
@@ -84,24 +94,18 @@ def create_term_report_comment(
 
     existing_comment = db.scalar(
         select(TermReportComment).where(
-            (
-                TermReportComment.student_id
-                == comment_data.student_id
-            )
-            & (
-                TermReportComment.academic_session_id
-                == comment_data.academic_session_id
-            )
-            & (
-                TermReportComment.term_id
-                == comment_data.term_id
-            )
+            TermReportComment.student_id
+            == comment_data.student_id,
+            TermReportComment.academic_session_id
+            == comment_data.academic_session_id,
+            TermReportComment.term_id
+            == comment_data.term_id,
         )
     )
 
     if existing_comment:
         raise HTTPException(
-            status_code=409,
+            status_code=status.HTTP_409_CONFLICT,
             detail=(
                 "Report comment already exists for this "
                 "student, session and term"
@@ -126,7 +130,7 @@ def create_term_report_comment(
         db.rollback()
 
         raise HTTPException(
-            status_code=409,
+            status_code=status.HTTP_409_CONFLICT,
             detail="Report comment already exists",
         )
 
@@ -141,13 +145,28 @@ def create_term_report_comment(
 )
 def get_term_report_comments(
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_admin),
+    current_user: User = Depends(require_school_admin),
 ):
-    return db.scalars(
-        select(TermReportComment).order_by(
-            TermReportComment.id
+    comments = db.scalars(
+        select(TermReportComment)
+        .join(
+            Student,
+            TermReportComment.student_id == Student.id,
         )
+        .join(
+            AcademicSession,
+            TermReportComment.academic_session_id
+            == AcademicSession.id,
+        )
+        .where(
+            Student.school_id == current_user.school_id,
+            AcademicSession.school_id
+            == current_user.school_id,
+        )
+        .order_by(TermReportComment.id)
     ).all()
+
+    return comments
 
 
 @router.get(
@@ -157,17 +176,30 @@ def get_term_report_comments(
 def get_term_report_comment(
     comment_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_admin),
+    current_user: User = Depends(require_school_admin),
 ):
     comment = db.scalar(
-        select(TermReportComment).where(
-            TermReportComment.id == comment_id
+        select(TermReportComment)
+        .join(
+            Student,
+            TermReportComment.student_id == Student.id,
+        )
+        .join(
+            AcademicSession,
+            TermReportComment.academic_session_id
+            == AcademicSession.id,
+        )
+        .where(
+            TermReportComment.id == comment_id,
+            Student.school_id == current_user.school_id,
+            AcademicSession.school_id
+            == current_user.school_id,
         )
     )
 
     if comment is None:
         raise HTTPException(
-            status_code=404,
+            status_code=status.HTTP_404_NOT_FOUND,
             detail="Report comment not found",
         )
 
@@ -182,17 +214,30 @@ def update_term_report_comment(
     comment_id: int,
     comment_data: TermReportCommentUpdate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_admin),
+    current_user: User = Depends(require_school_admin),
 ):
     comment = db.scalar(
-        select(TermReportComment).where(
-            TermReportComment.id == comment_id
+        select(TermReportComment)
+        .join(
+            Student,
+            TermReportComment.student_id == Student.id,
+        )
+        .join(
+            AcademicSession,
+            TermReportComment.academic_session_id
+            == AcademicSession.id,
+        )
+        .where(
+            TermReportComment.id == comment_id,
+            Student.school_id == current_user.school_id,
+            AcademicSession.school_id
+            == current_user.school_id,
         )
     )
 
     if comment is None:
         raise HTTPException(
-            status_code=404,
+            status_code=status.HTTP_404_NOT_FOUND,
             detail="Report comment not found",
         )
 
@@ -223,17 +268,30 @@ def update_term_report_comment(
 def delete_term_report_comment(
     comment_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_admin),
+    current_user: User = Depends(require_school_admin),
 ):
     comment = db.scalar(
-        select(TermReportComment).where(
-            TermReportComment.id == comment_id
+        select(TermReportComment)
+        .join(
+            Student,
+            TermReportComment.student_id == Student.id,
+        )
+        .join(
+            AcademicSession,
+            TermReportComment.academic_session_id
+            == AcademicSession.id,
+        )
+        .where(
+            TermReportComment.id == comment_id,
+            Student.school_id == current_user.school_id,
+            AcademicSession.school_id
+            == current_user.school_id,
         )
     )
 
     if comment is None:
         raise HTTPException(
-            status_code=404,
+            status_code=status.HTTP_404_NOT_FOUND,
             detail="Report comment not found",
         )
 

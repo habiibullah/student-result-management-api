@@ -43,6 +43,7 @@ class StudentResponse(BaseModel):
 
     id: int
     user_id: int
+    school_id: int
     admission_number: str
     first_name: str
     last_name: str

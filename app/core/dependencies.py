@@ -1,14 +1,16 @@
 from fastapi import Depends, HTTPException, status
-from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from fastapi.security import (
+    HTTPAuthorizationCredentials,
+    HTTPBearer,
+)
 from sqlalchemy import select
 from sqlalchemy.orm import Session
-from app.models.user import User
 
 import jwt
 
 from app.core.config import settings
 from app.database.connection import get_db
-from app.models import User
+from app.models.user import User
 
 
 security = HTTPBearer()
@@ -47,8 +49,18 @@ def get_current_user(
             detail="Invalid authentication token",
         )
 
+    try:
+        user_id = int(user_id)
+    except (TypeError, ValueError):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid authentication token",
+        )
+
     user = db.scalar(
-        select(User).where(User.id == int(user_id))
+        select(User).where(
+            User.id == user_id,
+        )
     )
 
     if user is None:
@@ -65,9 +77,17 @@ def get_current_user(
 
     return user
 
+
 def require_admin(
     current_user: User = Depends(get_current_user),
 ) -> User:
+    """
+    Allows any administrator.
+
+    This includes both:
+    - platform administrators
+    - school administrators
+    """
     if current_user.role != "admin":
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -76,16 +96,37 @@ def require_admin(
 
     return current_user
 
-def require_school_admin(
+
+def require_platform_admin(
     current_user: User = Depends(require_admin),
 ) -> User:
-    if current_user.school_id is None:
+    """
+    Platform administrators are admin users that are not
+    assigned to an individual school.
+    """
+    if current_user.school_id is not None:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="User is not assigned to a school",
+            detail="Platform admin access required",
         )
 
     return current_user
+
+
+def require_school_admin(
+    current_user: User = Depends(require_admin),
+) -> User:
+    """
+    School administrators must belong to a school.
+    """
+    if current_user.school_id is None:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="School admin access required",
+        )
+
+    return current_user
+
 
 def require_teacher(
     current_user: User = Depends(get_current_user),
@@ -96,7 +137,14 @@ def require_teacher(
             detail="Teacher access required",
         )
 
+    if current_user.school_id is None:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Teacher is not assigned to a school",
+        )
+
     return current_user
+
 
 def require_student(
     current_user: User = Depends(get_current_user),
@@ -105,6 +153,12 @@ def require_student(
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Student access required",
+        )
+
+    if current_user.school_id is None:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Student is not assigned to a school",
         )
 
     return current_user

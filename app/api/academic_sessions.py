@@ -2,7 +2,10 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.core.dependencies import get_current_user, require_admin
+from app.core.dependencies import (
+    get_current_user,
+    require_school_admin,
+)
 from app.database.connection import get_db
 from app.models import AcademicSession, TeachingAssignment, User
 from app.schemas.academic_session import (
@@ -25,31 +28,37 @@ router = APIRouter(
 def create_academic_session(
     session_data: AcademicSessionCreate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_admin),
+    current_user: User = Depends(require_school_admin),
 ):
     existing_session = db.scalar(
         select(AcademicSession).where(
-            AcademicSession.name == session_data.name
+            AcademicSession.name == session_data.name,
+            AcademicSession.school_id == current_user.school_id,
         )
     )
 
     if existing_session:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail="Academic session with this name already exists",
+            detail=(
+                "Academic session with this name "
+                "already exists in this school"
+            ),
         )
 
     if session_data.is_current:
-        current_session = db.scalar(
+        current_sessions = db.scalars(
             select(AcademicSession).where(
-                AcademicSession.is_current.is_(True)
+                AcademicSession.school_id == current_user.school_id,
+                AcademicSession.is_current.is_(True),
             )
-        )
+        ).all()
 
-        if current_session:
+        for current_session in current_sessions:
             current_session.is_current = False
 
     academic_session = AcademicSession(
+        school_id=current_user.school_id,
         name=session_data.name,
         is_current=session_data.is_current,
     )
@@ -69,8 +78,18 @@ def get_academic_sessions(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    if current_user.school_id is None:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="User is not assigned to a school",
+        )
+
     sessions = db.scalars(
-        select(AcademicSession).order_by(
+        select(AcademicSession)
+        .where(
+            AcademicSession.school_id == current_user.school_id
+        )
+        .order_by(
             AcademicSession.name.desc()
         )
     ).all()
@@ -87,9 +106,16 @@ def get_academic_session(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    if current_user.school_id is None:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="User is not assigned to a school",
+        )
+
     academic_session = db.scalar(
         select(AcademicSession).where(
-            AcademicSession.id == session_id
+            AcademicSession.id == session_id,
+            AcademicSession.school_id == current_user.school_id,
         )
     )
 
@@ -110,11 +136,12 @@ def update_academic_session(
     session_id: int,
     session_data: AcademicSessionUpdate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_admin),
+    current_user: User = Depends(require_school_admin),
 ):
     academic_session = db.scalar(
         select(AcademicSession).where(
-            AcademicSession.id == session_id
+            AcademicSession.id == session_id,
+            AcademicSession.school_id == current_user.school_id,
         )
     )
 
@@ -127,28 +154,33 @@ def update_academic_session(
     if session_data.name is not None:
         existing_session = db.scalar(
             select(AcademicSession).where(
-                (AcademicSession.name == session_data.name)
-                & (AcademicSession.id != session_id)
+                AcademicSession.name == session_data.name,
+                AcademicSession.school_id == current_user.school_id,
+                AcademicSession.id != session_id,
             )
         )
 
         if existing_session:
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
-                detail="Academic session with this name already exists",
+                detail=(
+                    "Academic session with this name "
+                    "already exists in this school"
+                ),
             )
 
         academic_session.name = session_data.name
 
     if session_data.is_current is True:
-        current_session = db.scalar(
+        current_sessions = db.scalars(
             select(AcademicSession).where(
-                (AcademicSession.is_current.is_(True))
-                & (AcademicSession.id != session_id)
+                AcademicSession.school_id == current_user.school_id,
+                AcademicSession.is_current.is_(True),
+                AcademicSession.id != session_id,
             )
-        )
+        ).all()
 
-        if current_session:
+        for current_session in current_sessions:
             current_session.is_current = False
 
         academic_session.is_current = True
@@ -169,11 +201,12 @@ def update_academic_session(
 def delete_academic_session(
     session_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_admin),
+    current_user: User = Depends(require_school_admin),
 ):
     academic_session = db.scalar(
         select(AcademicSession).where(
-            AcademicSession.id == session_id
+            AcademicSession.id == session_id,
+            AcademicSession.school_id == current_user.school_id,
         )
     )
 
@@ -185,7 +218,8 @@ def delete_academic_session(
 
     assignment_count = db.scalar(
         select(func.count(TeachingAssignment.id)).where(
-            TeachingAssignment.academic_session_id == session_id
+            TeachingAssignment.academic_session_id
+            == academic_session.id
         )
     )
 

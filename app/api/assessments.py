@@ -3,10 +3,10 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app.core.dependencies import require_admin
+from app.core.dependencies import require_school_admin
 from app.database.connection import get_db
-from app.models.assessment import Assessment
 from app.models.academic_session import AcademicSession
+from app.models.assessment import Assessment
 from app.models.class_model import Class
 from app.models.subject import Subject
 from app.models.term import Term
@@ -32,82 +32,101 @@ router = APIRouter(
 def create_assessment(
     assessment_data: AssessmentCreate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_admin),
+    current_user: User = Depends(require_school_admin),
 ):
-    # Validate class
+    # Validate class belongs to authenticated school.
     class_ = db.scalar(
-        select(Class).where(Class.id == assessment_data.class_id)
+        select(Class).where(
+            Class.id == assessment_data.class_id,
+            Class.school_id == current_user.school_id,
+        )
     )
 
     if class_ is None:
         raise HTTPException(
-            status_code=404,
+            status_code=status.HTTP_404_NOT_FOUND,
             detail="Class not found",
         )
 
-    # Validate subject
+    # Validate subject belongs to authenticated school.
     subject = db.scalar(
-        select(Subject).where(Subject.id == assessment_data.subject_id)
+        select(Subject).where(
+            Subject.id == assessment_data.subject_id,
+            Subject.school_id == current_user.school_id,
+        )
     )
 
     if subject is None:
         raise HTTPException(
-            status_code=404,
+            status_code=status.HTTP_404_NOT_FOUND,
             detail="Subject not found",
         )
 
-    # Validate academic session
+    # Validate academic session belongs to authenticated school.
     academic_session = db.scalar(
         select(AcademicSession).where(
-            AcademicSession.id == assessment_data.academic_session_id
+            AcademicSession.id
+            == assessment_data.academic_session_id,
+            AcademicSession.school_id
+            == current_user.school_id,
         )
     )
 
     if academic_session is None:
         raise HTTPException(
-            status_code=404,
+            status_code=status.HTTP_404_NOT_FOUND,
             detail="Academic session not found",
         )
 
-    # Validate term
+    # Validate term through its school-owned academic session.
     term = db.scalar(
-        select(Term).where(Term.id == assessment_data.term_id)
+        select(Term)
+        .join(
+            AcademicSession,
+            Term.academic_session_id == AcademicSession.id,
+        )
+        .where(
+            Term.id == assessment_data.term_id,
+            AcademicSession.school_id
+            == current_user.school_id,
+        )
     )
 
     if term is None:
         raise HTTPException(
-            status_code=404,
+            status_code=status.HTTP_404_NOT_FOUND,
             detail="Term not found",
         )
 
-    # Make sure term belongs to the selected academic session
-    if term.academic_session_id != assessment_data.academic_session_id:
+    # Term must belong to the selected academic session.
+    if (
+        term.academic_session_id
+        != assessment_data.academic_session_id
+    ):
         raise HTTPException(
-            status_code=400,
-            detail="Term does not belong to the selected academic session",
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=(
+                "Term does not belong to the selected "
+                "academic session"
+            ),
         )
 
-    # Check for duplicate assessment
     existing_assessment = db.scalar(
         select(Assessment).where(
-            (Assessment.class_id == assessment_data.class_id)
-            & (Assessment.subject_id == assessment_data.subject_id)
-            & (
-                Assessment.academic_session_id
-                == assessment_data.academic_session_id
-            )
-            & (Assessment.term_id == assessment_data.term_id)
-            & (
-                Assessment.assessment_type
-                == assessment_data.assessment_type
-            )
-            & (Assessment.sequence == assessment_data.sequence)
+            Assessment.class_id == assessment_data.class_id,
+            Assessment.subject_id == assessment_data.subject_id,
+            Assessment.academic_session_id
+            == assessment_data.academic_session_id,
+            Assessment.term_id == assessment_data.term_id,
+            Assessment.assessment_type
+            == assessment_data.assessment_type,
+            Assessment.sequence == assessment_data.sequence,
         )
     )
 
     if existing_assessment:
         raise HTTPException(
-            status_code=409,
+            status_code=status.HTTP_409_CONFLICT,
             detail="Assessment already exists",
         )
 
@@ -130,7 +149,7 @@ def create_assessment(
         db.rollback()
 
         raise HTTPException(
-            status_code=409,
+            status_code=status.HTTP_409_CONFLICT,
             detail="Assessment already exists",
         )
 
@@ -145,10 +164,30 @@ def create_assessment(
 )
 def get_assessments(
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_admin),
+    current_user: User = Depends(require_school_admin),
 ):
     assessments = db.scalars(
-        select(Assessment).order_by(Assessment.id)
+        select(Assessment)
+        .join(
+            Class,
+            Assessment.class_id == Class.id,
+        )
+        .join(
+            Subject,
+            Assessment.subject_id == Subject.id,
+        )
+        .join(
+            AcademicSession,
+            Assessment.academic_session_id
+            == AcademicSession.id,
+        )
+        .where(
+            Class.school_id == current_user.school_id,
+            Subject.school_id == current_user.school_id,
+            AcademicSession.school_id
+            == current_user.school_id,
+        )
+        .order_by(Assessment.id)
     ).all()
 
     return assessments
@@ -161,17 +200,35 @@ def get_assessments(
 def get_assessment(
     assessment_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_admin),
+    current_user: User = Depends(require_school_admin),
 ):
     assessment = db.scalar(
-        select(Assessment).where(
-            Assessment.id == assessment_id
+        select(Assessment)
+        .join(
+            Class,
+            Assessment.class_id == Class.id,
+        )
+        .join(
+            Subject,
+            Assessment.subject_id == Subject.id,
+        )
+        .join(
+            AcademicSession,
+            Assessment.academic_session_id
+            == AcademicSession.id,
+        )
+        .where(
+            Assessment.id == assessment_id,
+            Class.school_id == current_user.school_id,
+            Subject.school_id == current_user.school_id,
+            AcademicSession.school_id
+            == current_user.school_id,
         )
     )
 
     if assessment is None:
         raise HTTPException(
-            status_code=404,
+            status_code=status.HTTP_404_NOT_FOUND,
             detail="Assessment not found",
         )
 
@@ -186,17 +243,35 @@ def update_assessment(
     assessment_id: int,
     assessment_data: AssessmentUpdate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_admin),
+    current_user: User = Depends(require_school_admin),
 ):
     assessment = db.scalar(
-        select(Assessment).where(
-            Assessment.id == assessment_id
+        select(Assessment)
+        .join(
+            Class,
+            Assessment.class_id == Class.id,
+        )
+        .join(
+            Subject,
+            Assessment.subject_id == Subject.id,
+        )
+        .join(
+            AcademicSession,
+            Assessment.academic_session_id
+            == AcademicSession.id,
+        )
+        .where(
+            Assessment.id == assessment_id,
+            Class.school_id == current_user.school_id,
+            Subject.school_id == current_user.school_id,
+            AcademicSession.school_id
+            == current_user.school_id,
         )
     )
 
     if assessment is None:
         raise HTTPException(
-            status_code=404,
+            status_code=status.HTTP_404_NOT_FOUND,
             detail="Assessment not found",
         )
 
@@ -213,7 +288,7 @@ def update_assessment(
         db.rollback()
 
         raise HTTPException(
-            status_code=409,
+            status_code=status.HTTP_409_CONFLICT,
             detail="Unable to update assessment",
         )
 
@@ -229,17 +304,35 @@ def update_assessment(
 def delete_assessment(
     assessment_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_admin),
+    current_user: User = Depends(require_school_admin),
 ):
     assessment = db.scalar(
-        select(Assessment).where(
-            Assessment.id == assessment_id
+        select(Assessment)
+        .join(
+            Class,
+            Assessment.class_id == Class.id,
+        )
+        .join(
+            Subject,
+            Assessment.subject_id == Subject.id,
+        )
+        .join(
+            AcademicSession,
+            Assessment.academic_session_id
+            == AcademicSession.id,
+        )
+        .where(
+            Assessment.id == assessment_id,
+            Class.school_id == current_user.school_id,
+            Subject.school_id == current_user.school_id,
+            AcademicSession.school_id
+            == current_user.school_id,
         )
     )
 
     if assessment is None:
         raise HTTPException(
-            status_code=404,
+            status_code=status.HTTP_404_NOT_FOUND,
             detail="Assessment not found",
         )
 

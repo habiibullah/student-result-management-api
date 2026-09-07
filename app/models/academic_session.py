@@ -2,7 +2,13 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import Boolean, DateTime, String, ForeignKey
+from sqlalchemy import (
+    Boolean,
+    DateTime,
+    ForeignKey,
+    String,
+    UniqueConstraint,
+)
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database.base import Base
@@ -11,11 +17,26 @@ from app.database.base import Base
 class AcademicSession(Base):
     __tablename__ = "academic_sessions"
 
-    id: Mapped[int] = mapped_column(primary_key=True)
+    __table_args__ = (
+        UniqueConstraint(
+            "school_id",
+            "name",
+            name="uq_academic_sessions_school_name",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(
+        primary_key=True,
+    )
+
+    school_id: Mapped[int] = mapped_column(
+        ForeignKey("schools.id"),
+        nullable=False,
+        index=True,
+    )
 
     name: Mapped[str] = mapped_column(
         String(20),
-        unique=True,
         nullable=False,
         index=True,
     )
@@ -35,10 +56,4 @@ class AcademicSession(Base):
     teaching_assignments: Mapped[list["TeachingAssignment"]] = relationship(
         back_populates="academic_session",
         cascade="all, delete-orphan",
-    )
-
-    school_id: Mapped[int | None] = mapped_column(
-        ForeignKey("schools.id"),
-        nullable=True,
-        index=True,
     )

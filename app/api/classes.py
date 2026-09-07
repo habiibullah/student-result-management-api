@@ -2,7 +2,10 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.core.dependencies import get_current_user, require_admin
+from app.core.dependencies import (
+    get_current_user,
+    require_school_admin,
+)
 from app.database.connection import get_db
 from app.models import Class, TeachingAssignment, User
 from app.schemas.class_model import (
@@ -25,19 +28,23 @@ router = APIRouter(
 def create_class(
     class_data: ClassCreate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_admin),
+    current_user: User = Depends(require_school_admin),
 ):
     existing_class = db.scalar(
-        select(Class).where(Class.code == class_data.code)
+        select(Class).where(
+            Class.code == class_data.code,
+            Class.school_id == current_user.school_id,
+        )
     )
 
     if existing_class:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail="Class with this code already exists",
+            detail="Class with this code already exists in this school",
         )
 
     class_ = Class(
+        school_id=current_user.school_id,
         name=class_data.name,
         code=class_data.code,
         description=class_data.description,
@@ -58,8 +65,18 @@ def get_classes(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    if current_user.school_id is None:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="User is not assigned to a school",
+        )
+
     classes = db.scalars(
-        select(Class).order_by(Class.name)
+        select(Class)
+        .where(
+            Class.school_id == current_user.school_id
+        )
+        .order_by(Class.name)
     ).all()
 
     return classes
@@ -74,8 +91,17 @@ def get_class(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    if current_user.school_id is None:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="User is not assigned to a school",
+        )
+
     class_ = db.scalar(
-        select(Class).where(Class.id == class_id)
+        select(Class).where(
+            Class.id == class_id,
+            Class.school_id == current_user.school_id,
+        )
     )
 
     if class_ is None:
@@ -95,10 +121,13 @@ def update_class(
     class_id: int,
     class_data: ClassUpdate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_admin),
+    current_user: User = Depends(require_school_admin),
 ):
     class_ = db.scalar(
-        select(Class).where(Class.id == class_id)
+        select(Class).where(
+            Class.id == class_id,
+            Class.school_id == current_user.school_id,
+        )
     )
 
     if class_ is None:
@@ -110,15 +139,16 @@ def update_class(
     if class_data.code is not None:
         existing_class = db.scalar(
             select(Class).where(
-                (Class.code == class_data.code)
-                & (Class.id != class_id)
+                Class.code == class_data.code,
+                Class.school_id == current_user.school_id,
+                Class.id != class_id,
             )
         )
 
         if existing_class:
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
-                detail="Class with this code already exists",
+                detail="Class with this code already exists in this school",
             )
 
         class_.code = class_data.code
@@ -142,10 +172,13 @@ def update_class(
 def delete_class(
     class_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_admin),
+    current_user: User = Depends(require_school_admin),
 ):
     class_ = db.scalar(
-        select(Class).where(Class.id == class_id)
+        select(Class).where(
+            Class.id == class_id,
+            Class.school_id == current_user.school_id,
+        )
     )
 
     if class_ is None:
@@ -156,7 +189,7 @@ def delete_class(
 
     assignment_count = db.scalar(
         select(func.count(TeachingAssignment.id)).where(
-            TeachingAssignment.class_id == class_id
+            TeachingAssignment.class_id == class_.id
         )
     )
 

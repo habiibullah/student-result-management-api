@@ -3,7 +3,7 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app.core.dependencies import require_admin
+from app.core.dependencies import require_school_admin
 from app.database.connection import get_db
 from app.models import AcademicSession, Term, User
 from app.schemas.term import (
@@ -26,11 +26,16 @@ router = APIRouter(
 def create_term(
     term_data: TermCreate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_admin),
+    current_user: User = Depends(require_school_admin),
 ):
+    # Verify that the academic session belongs
+    # to the authenticated school.
     academic_session = db.scalar(
         select(AcademicSession).where(
-            AcademicSession.id == term_data.academic_session_id
+            AcademicSession.id
+            == term_data.academic_session_id,
+            AcademicSession.school_id
+            == current_user.school_id,
         )
     )
 
@@ -42,8 +47,9 @@ def create_term(
 
     existing_term = db.scalar(
         select(Term).where(
-            (Term.academic_session_id == term_data.academic_session_id)
-            & (Term.name == term_data.name)
+            Term.academic_session_id
+            == term_data.academic_session_id,
+            Term.name == term_data.name,
         )
     )
 
@@ -59,8 +65,8 @@ def create_term(
         closing_date=term_data.closing_date,
         next_term_resumption_date=(
             term_data.next_term_resumption_date
-    ),
-)
+        ),
+    )
 
     db.add(term)
 
@@ -84,10 +90,20 @@ def create_term(
 )
 def get_terms(
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_admin),
+    current_user: User = Depends(require_school_admin),
 ):
     terms = db.scalars(
-        select(Term).order_by(Term.id)
+        select(Term)
+        .join(
+            AcademicSession,
+            Term.academic_session_id
+            == AcademicSession.id,
+        )
+        .where(
+            AcademicSession.school_id
+            == current_user.school_id
+        )
+        .order_by(Term.id)
     ).all()
 
     return terms
@@ -100,10 +116,20 @@ def get_terms(
 def get_term(
     term_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_admin),
+    current_user: User = Depends(require_school_admin),
 ):
     term = db.scalar(
-        select(Term).where(Term.id == term_id)
+        select(Term)
+        .join(
+            AcademicSession,
+            Term.academic_session_id
+            == AcademicSession.id,
+        )
+        .where(
+            Term.id == term_id,
+            AcademicSession.school_id
+            == current_user.school_id,
+        )
     )
 
     if term is None:
@@ -123,10 +149,20 @@ def update_term(
     term_id: int,
     term_data: TermUpdate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_admin),
+    current_user: User = Depends(require_school_admin),
 ):
     term = db.scalar(
-        select(Term).where(Term.id == term_id)
+        select(Term)
+        .join(
+            AcademicSession,
+            Term.academic_session_id
+            == AcademicSession.id,
+        )
+        .where(
+            Term.id == term_id,
+            AcademicSession.school_id
+            == current_user.school_id,
+        )
     )
 
     if term is None:
@@ -135,30 +171,40 @@ def update_term(
             detail="Term not found",
         )
 
-    update_data = term_data.model_dump(exclude_unset=True)
+    update_data = term_data.model_dump(
+        exclude_unset=True
+    )
 
     if "closing_date" in update_data:
-        term.closing_date = update_data["closing_date"]
+        term.closing_date = update_data[
+            "closing_date"
+        ]
 
     if "next_term_resumption_date" in update_data:
-        term.next_term_resumption_date = update_data[
-            "next_term_resumption_date"
-    ]
+        term.next_term_resumption_date = (
+            update_data[
+                "next_term_resumption_date"
+            ]
+        )
 
     if "name" in update_data:
         existing_term = db.scalar(
             select(Term).where(
-                (Term.academic_session_id == term.academic_session_id)
-                & (Term.name == update_data["name"])
-                & (Term.id != term_id)
+                Term.academic_session_id
+                == term.academic_session_id,
+                Term.name
+                == update_data["name"],
+                Term.id != term_id,
             )
         )
-
 
         if existing_term:
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
-                detail="Term already exists for this academic session",
+                detail=(
+                    "Term already exists for "
+                    "this academic session"
+                ),
             )
 
         term.name = update_data["name"]
@@ -169,9 +215,11 @@ def update_term(
         db.rollback()
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail="Term already exists for this academic session",
+            detail=(
+                "Term already exists for "
+                "this academic session"
+            ),
         )
-
 
     db.refresh(term)
 
@@ -185,10 +233,20 @@ def update_term(
 def delete_term(
     term_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_admin),
+    current_user: User = Depends(require_school_admin),
 ):
     term = db.scalar(
-        select(Term).where(Term.id == term_id)
+        select(Term)
+        .join(
+            AcademicSession,
+            Term.academic_session_id
+            == AcademicSession.id,
+        )
+        .where(
+            Term.id == term_id,
+            AcademicSession.school_id
+            == current_user.school_id,
+        )
     )
 
     if term is None:

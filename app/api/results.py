@@ -1,35 +1,26 @@
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.core.dependencies import require_admin
+from app.core.dependencies import require_school_admin
 from app.database.connection import get_db
+from app.models.academic_session import AcademicSession
 from app.models.assessment import Assessment
+from app.models.class_model import Class
 from app.models.enrollment import Enrollment
 from app.models.student import Student
 from app.models.student_score import StudentScore
+from app.models.subject import Subject
+from app.models.term import Term
 from app.models.user import User
 from app.schemas.result import ResultResponse
+from app.services.result_service import calculate_grade
 
 
 router = APIRouter(
     prefix="/api/results",
     tags=["Results"],
 )
-
-
-def calculate_grade(total: float) -> str:
-    if total >= 70:
-        return "A"
-    elif total >= 60:
-        return "B"
-    elif total >= 50:
-        return "C"
-    elif total >= 45:
-        return "D"
-    elif total >= 40:
-        return "E"
-    return "F"
 
 
 @router.get(
@@ -42,49 +33,132 @@ def get_student_result(
     term_id: int = Query(gt=0),
     academic_session_id: int = Query(gt=0),
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_admin),
+    current_user: User = Depends(require_school_admin),
 ):
+    # Student must belong to authenticated school.
     student = db.scalar(
-        select(Student).where(Student.id == student_id)
+        select(Student).where(
+            Student.id == student_id,
+            Student.school_id == current_user.school_id,
+        )
     )
 
     if student is None:
         raise HTTPException(
-            status_code=404,
+            status_code=status.HTTP_404_NOT_FOUND,
             detail="Student not found",
         )
 
+    # Academic session must belong to authenticated school.
+    academic_session = db.scalar(
+        select(AcademicSession).where(
+            AcademicSession.id == academic_session_id,
+            AcademicSession.school_id == current_user.school_id,
+        )
+    )
+
+    if academic_session is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Academic session not found",
+        )
+
+    # Subject must belong to authenticated school.
+    subject = db.scalar(
+        select(Subject).where(
+            Subject.id == subject_id,
+            Subject.school_id == current_user.school_id,
+        )
+    )
+
+    if subject is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Subject not found",
+        )
+
+    # Term must belong to the selected academic session
+    # and authenticated school.
+    term = db.scalar(
+        select(Term)
+        .join(
+            AcademicSession,
+            Term.academic_session_id == AcademicSession.id,
+        )
+        .where(
+            Term.id == term_id,
+            Term.academic_session_id == academic_session_id,
+            AcademicSession.school_id == current_user.school_id,
+        )
+    )
+
+    if term is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Term not found",
+        )
+
+    # Enrollment must connect this student to a class
+    # belonging to the authenticated school.
     enrollment = db.scalar(
-        select(Enrollment).where(
-            (Enrollment.student_id == student_id)
-            & (
-                Enrollment.academic_session_id
-                == academic_session_id
-            )
+        select(Enrollment)
+        .join(
+            Class,
+            Enrollment.class_id == Class.id,
+        )
+        .where(
+            Enrollment.student_id == student_id,
+            Enrollment.academic_session_id == academic_session_id,
+            Class.school_id == current_user.school_id,
         )
     )
 
     if enrollment is None:
         raise HTTPException(
-            status_code=404,
-            detail="Student enrollment not found for this academic session",
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=(
+                "Student enrollment not found for this "
+                "academic session"
+            ),
         )
 
+    # Assessments must belong to the student's enrolled class,
+    # selected subject/session/term, and authenticated school.
     assessments = db.scalars(
-        select(Assessment).where(
-            (Assessment.class_id == enrollment.class_id)
-            & (Assessment.subject_id == subject_id)
-            & (
-                Assessment.academic_session_id
-                == academic_session_id
-            )
-            & (Assessment.term_id == term_id)
+        select(Assessment)
+        .join(
+            Class,
+            Assessment.class_id == Class.id,
+        )
+        .join(
+            Subject,
+            Assessment.subject_id == Subject.id,
+        )
+        .join(
+            AcademicSession,
+            Assessment.academic_session_id
+            == AcademicSession.id,
+        )
+        .where(
+            Assessment.class_id == enrollment.class_id,
+            Assessment.subject_id == subject_id,
+            Assessment.academic_session_id
+            == academic_session_id,
+            Assessment.term_id == term_id,
+            Class.school_id == current_user.school_id,
+            Subject.school_id == current_user.school_id,
+            AcademicSession.school_id
+            == current_user.school_id,
+        )
+        .order_by(
+            Assessment.assessment_type,
+            Assessment.sequence,
         )
     ).all()
 
     if not assessments:
         raise HTTPException(
-            status_code=404,
+            status_code=status.HTTP_404_NOT_FOUND,
             detail="No assessments found for this result",
         )
 
@@ -95,12 +169,10 @@ def get_student_result(
 
     scores = db.scalars(
         select(StudentScore).where(
-            (StudentScore.student_id == student_id)
-            & (
-                StudentScore.assessment_id.in_(
-                    assessment_ids
-                )
-            )
+            StudentScore.student_id == student_id,
+            StudentScore.assessment_id.in_(
+                assessment_ids
+            ),
         )
     ).all()
 
@@ -109,15 +181,14 @@ def get_student_result(
         for score in scores
     }
 
-    ca1 = 0.0
-    ca2 = 0.0
-    ca3 = 0.0
-    exam = 0.0
+    ca1 = None
+    ca2 = None
+    ca3 = None
+    exam = None
 
     for assessment in assessments:
         score = score_by_assessment.get(
-            assessment.id,
-            0.0,
+            assessment.id
         )
 
         if (
@@ -141,11 +212,21 @@ def get_student_result(
         elif assessment.assessment_type == "EXAM":
             exam = score
 
-    total = ca1 + ca2 + ca3 + exam
+    is_complete = all(
+        value is not None
+        for value in [ca1, ca2, ca3, exam]
+    )
 
-    percentage = total
-
-    grade = calculate_grade(total)
+    if is_complete:
+        total = ca1 + ca2 + ca3 + exam
+        percentage = total
+        grade = calculate_grade(total)
+        result_status = "COMPLETE"
+    else:
+        total = None
+        percentage = None
+        grade = None
+        result_status = "INCOMPLETE"
 
     return ResultResponse(
         student_id=student_id,
@@ -160,4 +241,5 @@ def get_student_result(
         total=total,
         percentage=percentage,
         grade=grade,
+        status=result_status,
     )
