@@ -12,6 +12,10 @@ from app.models.student_score import StudentScore
 from app.models.student_attendance import StudentAttendance
 from app.models.term_report_comment import TermReportComment
 from app.models.school import School
+from app.models.subscription_plan import SubscriptionPlan
+from app.models.subscription import Subscription
+
+
 
 __all__ = [
     "User", 
@@ -27,4 +31,6 @@ __all__ = [
     "StudentScore",
     "StudentAttendance",
     "TermReportComment",
+    "SubscriptionPlan",
+    "Subscription",
 ]

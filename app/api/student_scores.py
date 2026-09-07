@@ -18,6 +18,9 @@ from app.schemas.student_score import (
     StudentScoreResponse,
     StudentScoreUpdate,
 )
+from app.services.subscription_service import (
+    require_active_term_subscription,
+)
 
 
 router = APIRouter(
@@ -78,6 +81,13 @@ def create_student_score(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Assessment not found",
         )
+
+    require_active_term_subscription(
+        db=db,
+        school_id=current_user.school_id,
+        academic_session_id=assessment.academic_session_id,
+        term_id=assessment.term_id,
+    )
 
     enrollment = db.scalar(
         select(Enrollment)
@@ -323,6 +333,13 @@ def update_student_score(
             detail="Assessment not found",
         )
 
+    require_active_term_subscription(
+        db=db,
+        school_id=current_user.school_id,
+        academic_session_id=assessment.academic_session_id,
+        term_id=assessment.term_id,
+    )
+
     if score_data.score > float(assessment.max_score):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -387,6 +404,25 @@ def delete_student_score(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Student score not found",
         )
+
+    assessment = db.scalar(
+        select(Assessment).where(
+            Assessment.id == student_score.assessment_id
+        )
+    )
+
+    if assessment is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Assessment not found",
+        )
+
+    require_active_term_subscription(
+        db=db,
+        school_id=current_user.school_id,
+        academic_session_id=assessment.academic_session_id,
+        term_id=assessment.term_id,
+    )
 
     db.delete(student_score)
     db.commit()

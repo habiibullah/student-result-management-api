@@ -32,10 +32,10 @@ class Student(Base):
     user_id: Mapped[int] = mapped_column(
         ForeignKey(
             "users.id",
-            ondelete="CASCADE",
+            ondelete="SET NULL",
         ),
         unique=True,
-        nullable=False,
+        nullable=True,
     )
 
     school_id: Mapped[int] = mapped_column(
@@ -76,6 +76,6 @@ class Student(Base):
         default=datetime.utcnow,
     )
 
-    user: Mapped["User"] = relationship(
+    user: Mapped["User | None"] = relationship(
         back_populates="student",
     )

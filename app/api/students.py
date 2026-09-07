@@ -4,7 +4,6 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.core.dependencies import require_school_admin
-from app.core.security import hash_password
 from app.database.connection import get_db
 from app.models import Enrollment, Student, User
 from app.schemas.student import (
@@ -31,23 +30,7 @@ def create_student(
     current_user: User = Depends(require_school_admin),
 ):
     # ---------------------------------------------------------
-    # 1. CHECK EMAIL UNIQUENESS
-    # ---------------------------------------------------------
-
-    existing_user = db.scalar(
-        select(User).where(
-            User.email == student_data.email
-        )
-    )
-
-    if existing_user:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail="A user with this email already exists",
-        )
-
-    # ---------------------------------------------------------
-    # 2. CHECK ADMISSION NUMBER WITHIN THIS SCHOOL
+    # 1. CHECK ADMISSION NUMBER WITHIN THIS SCHOOL
     # ---------------------------------------------------------
 
     existing_student = db.scalar(
@@ -69,41 +52,22 @@ def create_student(
         )
 
     # ---------------------------------------------------------
-    # 3. CREATE STUDENT USER ACCOUNT
+    # 2. CREATE STUDENT PROFILE
     # ---------------------------------------------------------
 
-    user = User(
-        email=student_data.email,
-        password_hash=hash_password(
-            student_data.password
-        ),
-        role="student",
-        is_active=True,
+    student = Student(
+        user_id=None,
         school_id=current_user.school_id,
+        admission_number=student_data.admission_number,
+        first_name=student_data.first_name,
+        last_name=student_data.last_name,
+        date_of_birth=student_data.date_of_birth,
+        gender=student_data.gender,
     )
 
-    db.add(user)
+    db.add(student)
 
     try:
-        db.flush()
-
-        # -----------------------------------------------------
-        # 4. CREATE STUDENT PROFILE
-        # -----------------------------------------------------
-
-        student = Student(
-            user_id=user.id,
-            school_id=current_user.school_id,
-            admission_number=(
-                student_data.admission_number
-            ),
-            first_name=student_data.first_name,
-            last_name=student_data.last_name,
-            date_of_birth=student_data.date_of_birth,
-            gender=student_data.gender,
-        )
-
-        db.add(student)
         db.commit()
 
     except IntegrityError:
@@ -207,54 +171,12 @@ def update_student(
             detail="Student not found",
         )
 
-    # ---------------------------------------------------------
-    # 2. GET ASSOCIATED USER FROM SAME SCHOOL
-    # ---------------------------------------------------------
-
-    user = db.scalar(
-        select(User).where(
-            User.id == student.user_id,
-            User.school_id
-            == current_user.school_id,
-        )
-    )
-
-    if user is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Student user account not found",
-        )
-
     update_data = student_data.model_dump(
         exclude_unset=True
     )
 
     # ---------------------------------------------------------
-    # 3. CHECK EMAIL UNIQUENESS
-    # ---------------------------------------------------------
-
-    if "email" in update_data:
-        existing_user = db.scalar(
-            select(User).where(
-                User.email
-                == update_data["email"],
-                User.id
-                != student.user_id,
-            )
-        )
-
-        if existing_user:
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail=(
-                    "A user with this email already exists"
-                ),
-            )
-
-        user.email = update_data["email"]
-
-    # ---------------------------------------------------------
-    # 4. CHECK ADMISSION NUMBER WITHIN SCHOOL
+    # 2. CHECK ADMISSION NUMBER WITHIN SCHOOL
     # ---------------------------------------------------------
 
     if "admission_number" in update_data:
@@ -283,7 +205,7 @@ def update_student(
         )
 
     # ---------------------------------------------------------
-    # 5. UPDATE STUDENT PROFILE FIELDS
+    # 3. UPDATE STUDENT PROFILE FIELDS
     # ---------------------------------------------------------
 
     student_fields = [
@@ -300,13 +222,6 @@ def update_student(
                 field,
                 update_data[field],
             )
-
-    # ---------------------------------------------------------
-    # 6. UPDATE USER ACCOUNT STATUS
-    # ---------------------------------------------------------
-
-    if "is_active" in update_data:
-        user.is_active = update_data["is_active"]
 
     try:
         db.commit()
@@ -378,35 +293,11 @@ def delete_student(
         )
 
     # ---------------------------------------------------------
-    # 3. GET ASSOCIATED USER FROM CURRENT SCHOOL
-    # ---------------------------------------------------------
-
-    user = db.scalar(
-        select(User).where(
-            User.id == student.user_id,
-            User.school_id
-            == current_user.school_id,
-        )
-    )
-
-    if user is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Student user account not found",
-        )
-
-    # ---------------------------------------------------------
-    # 4. DELETE STUDENT AND USER
+    # 3. DELETE STUDENT
     # ---------------------------------------------------------
 
     try:
-        # Student must be deleted first because
-        # student.user_id is non-nullable.
         db.delete(student)
-        db.flush()
-
-        db.delete(user)
-
         db.commit()
 
     except IntegrityError:
