@@ -16,6 +16,9 @@ from app.models.assessment import Assessment
 from app.models.class_model import Class
 from app.models.enrollment import Enrollment
 from app.models.result_publication import ResultPublication
+from app.models.published_report_snapshot import (
+    PublishedReportSnapshot,
+)
 from app.models.student_score import StudentScore
 from app.models.subject import Subject
 from app.models.term import Term
@@ -29,6 +32,9 @@ from app.services.result_service import (
 )
 from app.services.subscription_service import (
     require_active_term_subscription,
+)
+from app.services.report_sheet_service import (
+    build_student_report_sheet,
 )
 
 
@@ -329,34 +335,99 @@ def publish_results(
     )
 
     # ---------------------------------------------------------
-    # 7. PUBLISH OR REPUBLISH
+    # 7. CREATE OR UPDATE PUBLICATION
     # ---------------------------------------------------------
 
     if existing_publication is not None:
-        existing_publication.status = "published"
-        existing_publication.published_by_user_id = (
+        publication = existing_publication
+
+        publication.status = "published"
+        publication.published_by_user_id = (
             current_user.id
         )
-        existing_publication.published_at = (
+        publication.published_at = (
             datetime.utcnow()
         )
 
-        db.commit()
-        db.refresh(existing_publication)
+    else:
+        publication = ResultPublication(
+            class_id=publication_data.class_id,
+            academic_session_id=(
+                publication_data.academic_session_id
+            ),
+            term_id=publication_data.term_id,
+            status="published",
+            published_by_user_id=current_user.id,
+        )
 
-        return existing_publication
+        db.add(publication)
 
-    publication = ResultPublication(
-        class_id=publication_data.class_id,
-        academic_session_id=(
-            publication_data.academic_session_id
-        ),
-        term_id=publication_data.term_id,
-        status="published",
-        published_by_user_id=current_user.id,
-    )
+    # Flush so a new publication receives its database ID
+    # before snapshots are created.
+    db.flush()
 
-    db.add(publication)
+    # ---------------------------------------------------------
+    # 8. GET ENROLLED STUDENTS
+    # ---------------------------------------------------------
+
+    enrollments = db.scalars(
+        select(Enrollment).where(
+            Enrollment.class_id
+            == publication_data.class_id,
+            Enrollment.academic_session_id
+            == publication_data.academic_session_id,
+        )
+    ).all()
+
+    # ---------------------------------------------------------
+    # 9. CREATE OR UPDATE REPORT SNAPSHOTS
+    # ---------------------------------------------------------
+
+    for enrollment in enrollments:
+        report = build_student_report_sheet(
+            db=db,
+            school_id=current_user.school_id,
+            student_id=enrollment.student_id,
+            academic_session_id=(
+                publication_data.academic_session_id
+            ),
+            term_id=publication_data.term_id,
+        )
+
+        report_data = report.model_dump(
+            mode="json"
+        )
+
+        existing_snapshot = db.scalar(
+            select(PublishedReportSnapshot).where(
+                PublishedReportSnapshot.publication_id
+                == publication.id,
+                PublishedReportSnapshot.student_id
+                == enrollment.student_id,
+            )
+        )
+
+        if existing_snapshot is not None:
+            existing_snapshot.report_data = (
+                report_data
+            )
+            existing_snapshot.updated_at = (
+                datetime.utcnow()
+            )
+
+        else:
+            snapshot = PublishedReportSnapshot(
+                publication_id=publication.id,
+                student_id=enrollment.student_id,
+                report_data=report_data,
+            )
+
+            db.add(snapshot)
+
+    # ---------------------------------------------------------
+    # 10. COMMIT PUBLICATION AND SNAPSHOTS TOGETHER
+    # ---------------------------------------------------------
+
     db.commit()
     db.refresh(publication)
 

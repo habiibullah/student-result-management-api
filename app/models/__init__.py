@@ -15,6 +15,7 @@ from app.models.school import School
 from app.models.subscription_plan import SubscriptionPlan
 from app.models.subscription import Subscription
 from app.models.result_publication import ResultPublication
+from app.models.published_report_snapshot import PublishedReportSnapshot
 
 
 __all__ = [
@@ -35,4 +36,5 @@ __all__ = [
     "Subscription",
     "ResultPublication",
     "School",
+    "PublishedReportSnapshot",
 ]
