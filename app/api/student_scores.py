@@ -21,6 +21,9 @@ from app.schemas.student_score import (
 from app.services.subscription_service import (
     require_active_term_subscription,
 )
+from app.services.result_publication_service import (
+    require_result_unpublished,
+)
 
 
 router = APIRouter(
@@ -85,6 +88,13 @@ def create_student_score(
     require_active_term_subscription(
         db=db,
         school_id=current_user.school_id,
+        academic_session_id=assessment.academic_session_id,
+        term_id=assessment.term_id,
+    )
+
+    require_result_unpublished(
+        db=db,
+        class_id=assessment.class_id,
         academic_session_id=assessment.academic_session_id,
         term_id=assessment.term_id,
     )
@@ -340,6 +350,13 @@ def update_student_score(
         term_id=assessment.term_id,
     )
 
+    require_result_unpublished(
+        db=db,
+        class_id=assessment.class_id,
+        academic_session_id=assessment.academic_session_id,
+        term_id=assessment.term_id,
+    )
+
     if score_data.score > float(assessment.max_score):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -420,6 +437,13 @@ def delete_student_score(
     require_active_term_subscription(
         db=db,
         school_id=current_user.school_id,
+        academic_session_id=assessment.academic_session_id,
+        term_id=assessment.term_id,
+    )
+
+    require_result_unpublished(
+        db=db,
+        class_id=assessment.class_id,
         academic_session_id=assessment.academic_session_id,
         term_id=assessment.term_id,
     )

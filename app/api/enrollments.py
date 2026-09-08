@@ -17,6 +17,10 @@ from app.schemas.enrollment import (
     EnrollmentResponse,
     EnrollmentUpdate,
 )
+from app.services.result_publication_service import (
+    require_class_session_results_unpublished,
+)
+
 
 router = APIRouter(
     prefix="/api/enrollments",
@@ -74,6 +78,12 @@ def create_enrollment(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Academic session not found",
         )
+
+    require_class_session_results_unpublished(
+        db=db,
+        class_id=enrollment_data.class_id,
+        academic_session_id=enrollment_data.academic_session_id,
+    )
 
     existing_enrollment = db.scalar(
         select(Enrollment).where(
@@ -232,6 +242,12 @@ def update_enrollment(
             detail="Enrollment not found",
         )
 
+    require_class_session_results_unpublished(
+        db=db,
+        class_id=enrollment.class_id,
+        academic_session_id=enrollment.academic_session_id,
+    )
+
     update_data = enrollment_data.model_dump(
         exclude_unset=True
     )
@@ -274,6 +290,17 @@ def update_enrollment(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Academic session not found",
             )
+
+    if (
+       new_class_id != enrollment.class_id
+       or new_academic_session_id
+       != enrollment.academic_session_id
+    ):
+        require_class_session_results_unpublished(
+            db=db,
+            class_id=new_class_id,
+            academic_session_id=new_academic_session_id,
+        )
 
     duplicate = db.scalar(
         select(Enrollment).where(
@@ -356,6 +383,12 @@ def delete_enrollment(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Enrollment not found",
         )
+
+    require_class_session_results_unpublished(
+        db=db,
+        class_id=enrollment.class_id,
+        academic_session_id=enrollment.academic_session_id,
+    )
 
     db.delete(enrollment)
     db.commit()

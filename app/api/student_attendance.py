@@ -18,7 +18,9 @@ from app.schemas.student_attendance import (
 from app.services.subscription_service import (
     require_active_term_subscription,
 )
-
+from app.services.result_publication_service import (
+    require_student_result_unpublished,
+)
 
 router = APIRouter(
     prefix="/api/student-attendance",
@@ -141,6 +143,13 @@ def create_student_attendance(
     require_active_term_subscription(
         db=db,
         school_id=current_user.school_id,
+        academic_session_id=attendance_data.academic_session_id,
+        term_id=attendance_data.term_id,
+    )
+
+    require_student_result_unpublished(
+        db=db,
+        student_id=attendance_data.student_id,
         academic_session_id=attendance_data.academic_session_id,
         term_id=attendance_data.term_id,
     )
@@ -332,6 +341,13 @@ def update_student_attendance(
         term_id=attendance.term_id,
     )
 
+    require_student_result_unpublished(
+        db=db,
+        student_id=attendance.student_id,
+        academic_session_id=attendance.academic_session_id,
+        term_id=attendance.term_id,
+    )
+
     # ---------------------------------------------------------
     # 3. VALIDATE UPDATED VALUES
     # ---------------------------------------------------------
@@ -420,6 +436,13 @@ def delete_student_attendance(
     require_active_term_subscription(
         db=db,
         school_id=current_user.school_id,
+        academic_session_id=attendance.academic_session_id,
+        term_id=attendance.term_id,
+    )
+
+    require_student_result_unpublished(
+        db=db,
+        student_id=attendance.student_id,
         academic_session_id=attendance.academic_session_id,
         term_id=attendance.term_id,
     )

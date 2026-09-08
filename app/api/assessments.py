@@ -16,7 +16,9 @@ from app.schemas.assessment import (
     AssessmentResponse,
     AssessmentUpdate,
 )
-
+from app.services.result_publication_service import (
+    require_result_unpublished,
+)
 
 router = APIRouter(
     prefix="/api/assessments",
@@ -110,6 +112,14 @@ def create_assessment(
                 "academic session"
             ),
         )
+
+
+    require_result_unpublished(
+        db=db,
+        class_id=assessment_data.class_id,
+        academic_session_id=assessment_data.academic_session_id,
+        term_id=assessment_data.term_id,
+    )
 
     existing_assessment = db.scalar(
         select(Assessment).where(
@@ -275,6 +285,13 @@ def update_assessment(
             detail="Assessment not found",
         )
 
+    require_result_unpublished(
+        db=db,
+        class_id=assessment.class_id,
+        academic_session_id=assessment.academic_session_id,
+        term_id=assessment.term_id,
+    )
+
     update_data = assessment_data.model_dump(
         exclude_unset=True
     )
@@ -335,6 +352,13 @@ def delete_assessment(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Assessment not found",
         )
+
+    require_result_unpublished(
+        db=db,
+        class_id=assessment.class_id,
+        academic_session_id=assessment.academic_session_id,
+        term_id=assessment.term_id,
+    )
 
     db.delete(assessment)
     db.commit()

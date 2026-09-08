@@ -18,7 +18,9 @@ from app.schemas.term_report_comment import (
 from app.services.subscription_service import (
     require_active_term_subscription,
 )
-
+from app.services.result_publication_service import (
+    require_student_result_unpublished,
+)
 
 router = APIRouter(
     prefix="/api/term-report-comments",
@@ -114,6 +116,13 @@ def create_term_report_comment(
     require_active_term_subscription(
         db=db,
         school_id=current_user.school_id,
+        academic_session_id=comment_data.academic_session_id,
+        term_id=comment_data.term_id,
+    )
+
+    require_student_result_unpublished(
+        db=db,
+        student_id=comment_data.student_id,
         academic_session_id=comment_data.academic_session_id,
         term_id=comment_data.term_id,
     )
@@ -291,6 +300,13 @@ def update_term_report_comment(
         term_id=comment.term_id,
     )
 
+    require_student_result_unpublished(
+        db=db,
+        student_id=comment.student_id,
+        academic_session_id=comment.academic_session_id,
+        term_id=comment.term_id,
+    )
+
     # ---------------------------------------------------------
     # 3. UPDATE COMMENT FIELDS
     # ---------------------------------------------------------
@@ -360,6 +376,13 @@ def delete_term_report_comment(
     require_active_term_subscription(
         db=db,
         school_id=current_user.school_id,
+        academic_session_id=comment.academic_session_id,
+        term_id=comment.term_id,
+    )
+
+    require_student_result_unpublished(
+        db=db,
+        student_id=comment.student_id,
         academic_session_id=comment.academic_session_id,
         term_id=comment.term_id,
     )
