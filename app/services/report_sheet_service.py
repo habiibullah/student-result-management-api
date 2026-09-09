@@ -12,6 +12,8 @@ from app.models.student_score import StudentScore
 from app.models.subject import Subject
 from app.models.term import Term
 from app.models.term_report_comment import TermReportComment
+from app.models.school import School
+
 
 from app.schemas.report_sheet import (
     ReportSheetAttendance,
@@ -21,6 +23,7 @@ from app.schemas.report_sheet import (
     ReportSheetStudent,
     ReportSheetTerm,
     StudentReportSheetResponse,
+    ReportSheetSchool,
 )
 
 from app.services.result_service import (
@@ -52,6 +55,22 @@ def build_student_report_sheet(
         raise HTTPException(
             status_code=404,
             detail="Student not found",
+        )
+
+    # ---------------------------------------------------------
+    # GET SCHOOL
+    # ---------------------------------------------------------
+
+    school = db.scalar(
+        select(School).where(
+            School.id == school_id,
+        )
+    )
+
+    if school is None:
+        raise HTTPException(
+            status_code=404,
+            detail="School not found",
         )
 
     # ---------------------------------------------------------
@@ -321,6 +340,15 @@ def build_student_report_sheet(
     # ---------------------------------------------------------
 
     return StudentReportSheetResponse(
+        school_info=ReportSheetSchool(
+            school_id=school.id,
+            school_name=school.name,
+            email=school.email,
+            phone=school.phone,
+            address=school.address,
+            motto=school.motto,
+            logo_url=school.logo_url,
+        ),
         student=ReportSheetStudent(
             student_id=student.id,
             admission_number=student.admission_number,

@@ -29,6 +29,16 @@ class ReportSheetComments(BaseModel):
     principal_comment: str | None
 
 
+class ReportSheetSchool(BaseModel):
+    school_id: int
+    school_name: str
+    email: str | None
+    phone: str | None
+    address: str | None
+    motto: str | None
+    logo_url: str | None
+
+
 class ReportSheetStudent(BaseModel):
     student_id: int
     admission_number: str
@@ -69,6 +79,7 @@ class ReportSheetPerformanceSummary(BaseModel):
 
 
 class StudentReportSheetResponse(BaseModel):
+    school_info: ReportSheetSchool
     student: ReportSheetStudent
     class_info: ReportSheetClass
     term_info: ReportSheetTerm

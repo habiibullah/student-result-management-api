@@ -39,6 +39,32 @@ class SchoolRegistrationResponse(BaseModel):
     message: str
 
 
+class SchoolUpdate(BaseModel):
+    name: str | None = Field(
+        default=None,
+        min_length=2,
+        max_length=255,
+    )
+
+    email: EmailStr | None = None
+
+    phone: str | None = Field(
+        default=None,
+        max_length=50,
+    )
+
+    address: str | None = None
+
+    motto: str | None = Field(
+        default=None,
+        max_length=255,
+    )
+
+    logo_url: str | None = Field(
+        default=None,
+        max_length=500,
+    )
+
 class SchoolResponse(BaseModel):
     id: int
     name: str

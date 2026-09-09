@@ -10,8 +10,10 @@ from app.models.user import User
 from app.schemas.school import (
     SchoolRegistrationRequest,
     SchoolRegistrationResponse,
+    SchoolResponse,
+    SchoolUpdate,
 )
-
+from app.core.dependencies import require_school_admin
 
 router = APIRouter(
     prefix="/api/schools",
@@ -136,3 +138,67 @@ def register_school(
         role=school_admin.role,
         message="School registered successfully",
     )
+
+
+@router.get(
+    "/me",
+    response_model=SchoolResponse,
+)
+def get_my_school(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_school_admin),
+):
+    school = db.scalar(
+        select(School).where(
+            School.id == current_user.school_id
+        )
+    )
+
+    if school is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="School not found",
+        )
+
+    return school
+
+
+@router.patch(
+    "/me",
+    response_model=SchoolResponse,
+)
+def update_my_school(
+    payload: SchoolUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_school_admin),
+):
+    school = db.scalar(
+        select(School).where(
+            School.id == current_user.school_id
+        )
+    )
+
+    if school is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="School not found",
+        )
+
+    update_data = payload.model_dump(
+        exclude_unset=True
+    )
+
+    for field, value in update_data.items():
+        if isinstance(value, str):
+            value = value.strip()
+
+        setattr(
+            school,
+            field,
+            value,
+        )
+
+    db.commit()
+    db.refresh(school)
+
+    return school
