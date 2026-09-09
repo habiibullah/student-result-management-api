@@ -14,6 +14,7 @@ from app.models.term import Term
 from app.models.term_report_comment import TermReportComment
 from app.models.school import School
 from app.models.grading_scale import GradingScale
+from app.models.report_settings import ReportSettings
 
 
 from app.schemas.report_sheet import (
@@ -25,6 +26,7 @@ from app.schemas.report_sheet import (
     ReportSheetTerm,
     StudentReportSheetResponse,
     ReportSheetSchool,
+    ReportSheetSettings,
 )
 
 from app.services.result_service import (
@@ -73,6 +75,17 @@ def build_student_report_sheet(
             status_code=404,
             detail="School not found",
         )
+
+
+    # ---------------------------------------------------------
+    # GET SCHOOL REPORT SETTINGS
+    # ---------------------------------------------------------
+
+    report_settings = db.scalar(
+        select(ReportSettings).where(
+            ReportSettings.school_id == school_id
+        )
+    )
 
 
     # ---------------------------------------------------------
@@ -312,11 +325,14 @@ def build_student_report_sheet(
     attendance_summary = None
 
     if attendance_record is not None:
-        attendance_percentage = (
-            attendance_record.days_present
-            / attendance_record.school_days
-            * 100
-        )
+        if attendance_record.school_days > 0:
+            attendance_percentage = (
+                attendance_record.days_present
+                / attendance_record.school_days
+                * 100
+            )
+        else:
+            attendance_percentage = 0.0
 
         attendance_summary = ReportSheetAttendance(
             school_days=attendance_record.school_days,
@@ -366,6 +382,60 @@ def build_student_report_sheet(
             address=school.address,
             motto=school.motto,
             logo_url=school.logo_url,
+        ),
+
+
+        report_settings=ReportSheetSettings(
+            report_title=(
+                report_settings.report_title
+                if report_settings
+                else "Student Report Sheet"
+            ),
+            show_class_position=(
+                report_settings.show_class_position
+                if report_settings
+                else True
+            ),
+            show_class_size=(
+                report_settings.show_class_size
+                if report_settings
+                else True
+            ),
+            show_attendance=(
+                report_settings.show_attendance
+                if report_settings
+                else True
+            ),
+            show_teacher_comment=(
+                report_settings.show_teacher_comment
+                if report_settings
+                else True
+            ),
+            show_principal_comment=(
+                report_settings.show_principal_comment
+                if report_settings
+                else True
+            ),
+            show_school_motto=(
+                report_settings.show_school_motto
+                if report_settings
+                else True
+            ),
+            show_school_logo=(
+                report_settings.show_school_logo
+                if report_settings
+                else True
+            ),
+            show_grading_remarks=(
+                report_settings.show_grading_remarks
+                if report_settings
+                else True
+            ),
+            principal_designation=(
+                report_settings.principal_designation
+                if report_settings
+                else "Principal"
+            ),
         ),
         student=ReportSheetStudent(
             student_id=student.id,
@@ -423,3 +493,7 @@ def build_student_report_sheet(
         attendance=attendance_summary,
         comments=comment_summary,
     )
+
+
+
+    

@@ -34,7 +34,9 @@ from app.api.result_publications import (
 from app.api.grading_scales import (
     router as grading_scales_router,
 )
-
+from app.api.report_settings import (
+    router as report_settings_router,
+)
 
 app = FastAPI(
     title="Student Result Management API",
@@ -65,7 +67,7 @@ app.include_router(subscription_plans_router)
 app.include_router(subscriptions_router)
 app.include_router(result_publications_router)
 app.include_router(grading_scales_router)
-
+app.include_router(report_settings_router)
 
 @app.get("/")
 def root():

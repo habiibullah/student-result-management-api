@@ -18,6 +18,7 @@ from app.models import (
     TeachingAssignment,
     PublishedReportSnapshot,
     GradingScale,
+    ReportSettings,
 )
 
 

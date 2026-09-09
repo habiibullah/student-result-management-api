@@ -39,6 +39,21 @@ class ReportSheetSchool(BaseModel):
     logo_url: str | None
 
 
+class ReportSheetSettings(BaseModel):
+    report_title: str
+
+    show_class_position: bool
+    show_class_size: bool
+    show_attendance: bool
+    show_teacher_comment: bool
+    show_principal_comment: bool
+    show_school_motto: bool
+    show_school_logo: bool
+    show_grading_remarks: bool
+
+    principal_designation: str
+
+
 class ReportSheetStudent(BaseModel):
     student_id: int
     admission_number: str
@@ -80,6 +95,8 @@ class ReportSheetPerformanceSummary(BaseModel):
 
 class StudentReportSheetResponse(BaseModel):
     school_info: ReportSheetSchool
+    report_settings: ReportSheetSettings | None = None
+
     student: ReportSheetStudent
     class_info: ReportSheetClass
     term_info: ReportSheetTerm

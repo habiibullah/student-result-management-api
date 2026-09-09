@@ -17,6 +17,8 @@ from app.models.subscription import Subscription
 from app.models.result_publication import ResultPublication
 from app.models.published_report_snapshot import PublishedReportSnapshot
 from app.models.grading_scale import GradingScale
+from app.models.report_settings import ReportSettings
+
 
 __all__ = [
     "User", 
@@ -38,4 +40,5 @@ __all__ = [
     "School",
     "PublishedReportSnapshot",
     "GradingScale",
+    "ReportSettings",
 ]
