@@ -15,6 +15,7 @@ from app.models.term import Term
 from app.models.user import User
 from app.schemas.result import ResultResponse
 from app.services.result_service import calculate_grade
+from app.models.grading_scale import GradingScale
 
 
 router = APIRouter(
@@ -181,6 +182,17 @@ def get_student_result(
         for score in scores
     }
 
+    grading_scales = db.scalars(
+        select(GradingScale)
+        .where(
+            GradingScale.school_id
+            == current_user.school_id
+        )
+        .order_by(
+            GradingScale.minimum_score.desc()
+        )
+    ).all()
+
     ca1 = None
     ca2 = None
     ca3 = None
@@ -220,7 +232,10 @@ def get_student_result(
     if is_complete:
         total = ca1 + ca2 + ca3 + exam
         percentage = total
-        grade = calculate_grade(total)
+        grade = calculate_grade(
+            total,
+            grading_scales,
+        )
         result_status = "COMPLETE"
     else:
         total = None

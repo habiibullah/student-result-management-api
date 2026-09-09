@@ -1,8 +1,32 @@
 from app.models.assessment import Assessment
 from app.models.subject import Subject
+from app.models.grading_scale import GradingScale
 
 
-def calculate_grade(total: float) -> str:
+def calculate_grade(
+    total: float,
+    grading_scales: list[GradingScale] | None = None,
+) -> str:
+    if grading_scales:
+        ordered_scales = sorted(
+            grading_scales,
+            key=lambda scale: scale.minimum_score,
+            reverse=True,
+        )
+
+        for scale in ordered_scales:
+            if (
+                scale.minimum_score
+                <= total
+                <= scale.maximum_score
+            ):
+                return scale.grade
+
+        for scale in ordered_scales:
+            if total >= scale.minimum_score:
+                return scale.grade
+
+    # Default grading scale fallback
     if total >= 70:
         return "A"
     if total >= 60:
@@ -13,6 +37,7 @@ def calculate_grade(total: float) -> str:
         return "D"
     if total >= 40:
         return "E"
+
     return "F"
 
 
@@ -35,6 +60,7 @@ def compute_student_term_result(
     assessments: list[Assessment],
     subjects_by_id: dict[int, Subject],
     scores_by_key: dict[tuple[int, int], float],
+    grading_scales: list[GradingScale] | None = None,
 ):
     grouped_assessments: dict[int, list[Assessment]] = {}
 
@@ -93,7 +119,10 @@ def compute_student_term_result(
 
         if is_complete:
             total = ca1 + ca2 + ca3 + exam
-            grade = calculate_grade(total)
+            grade = calculate_grade(
+                 total,
+                 grading_scales,
+            )
             status = "COMPLETE"
             completed_totals.append(total)
 
@@ -144,7 +173,10 @@ def compute_student_term_result(
         )
 
         if average is not None:
-            overall_grade = calculate_grade(average)
+            overall_grade = calculate_grade(
+                average,
+                grading_scales,
+            )
             remark = calculate_remark(average)
 
     return {

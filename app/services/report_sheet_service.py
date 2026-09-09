@@ -13,6 +13,7 @@ from app.models.subject import Subject
 from app.models.term import Term
 from app.models.term_report_comment import TermReportComment
 from app.models.school import School
+from app.models.grading_scale import GradingScale
 
 
 from app.schemas.report_sheet import (
@@ -72,6 +73,7 @@ def build_student_report_sheet(
             status_code=404,
             detail="School not found",
         )
+
 
     # ---------------------------------------------------------
     # 2. GET STUDENT ENROLLMENT
@@ -232,7 +234,7 @@ def build_student_report_sheet(
             )
         ).all()
 
-    scores_by_key = {
+        scores_by_key = {
         (
             score.student_id,
             score.assessment_id,
@@ -241,8 +243,23 @@ def build_student_report_sheet(
     }
 
     # ---------------------------------------------------------
-    # 10. COMPUTE RESULTS FOR ALL STUDENTS
+    # 10. GET SCHOOL GRADING SCALES
     # ---------------------------------------------------------
+
+    grading_scales = db.scalars(
+        select(GradingScale)
+        .where(
+            GradingScale.school_id == school_id
+        )
+        .order_by(
+            GradingScale.minimum_score.desc()
+        )
+    ).all()
+
+    # ---------------------------------------------------------
+    # 11. COMPUTE RESULTS FOR ALL STUDENTS
+    # ---------------------------------------------------------
+
 
     all_results = {}
 
@@ -252,6 +269,7 @@ def build_student_report_sheet(
             assessments=assessments,
             subjects_by_id=subjects_by_id,
             scores_by_key=scores_by_key,
+            grading_scales=grading_scales,
         )
 
         all_results[

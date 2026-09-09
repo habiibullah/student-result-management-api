@@ -16,6 +16,7 @@ from app.models.subject import Subject
 from app.models.term import Term
 from app.models.term_report_comment import TermReportComment
 from app.models.user import User
+from app.models.grading_scale import GradingScale
 
 from app.schemas.term_result import (
     AttendanceSummary,
@@ -238,7 +239,7 @@ def get_student_term_result(
             )
         ).all()
 
-    scores_by_key = {
+        scores_by_key = {
         (
             score.student_id,
             score.assessment_id,
@@ -247,22 +248,39 @@ def get_student_term_result(
     }
 
     # ---------------------------------------------------------
-    # 10. COMPUTE RESULTS FOR THE WHOLE CLASS
+    # 10. GET SCHOOL GRADING SCALES
     # ---------------------------------------------------------
+
+    grading_scales = db.scalars(
+        select(GradingScale)
+        .where(
+            GradingScale.school_id
+            == current_user.school_id
+        )
+        .order_by(
+            GradingScale.minimum_score.desc()
+        )
+    ).all()
+
+    # ---------------------------------------------------------
+    # 11. COMPUTE RESULTS FOR THE WHOLE CLASS
+    # ---------------------------------------------------------
+
 
     all_results = {}
 
     for class_enrollment in class_enrollments:
-        result = compute_student_term_result(
+            result = compute_student_term_result(
             student_id=(
                 class_enrollment.student_id
             ),
             assessments=assessments,
             subjects_by_id=subjects_by_id,
             scores_by_key=scores_by_key,
+            grading_scales=grading_scales,
         )
 
-        all_results[
+            all_results[
             class_enrollment.student_id
         ] = result
 

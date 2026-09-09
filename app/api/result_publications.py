@@ -23,6 +23,7 @@ from app.models.student_score import StudentScore
 from app.models.subject import Subject
 from app.models.term import Term
 from app.models.user import User
+from app.models.grading_scale import GradingScale
 from app.schemas.result_publication import (
     ResultPublicationCreate,
     ResultPublicationResponse,
@@ -157,16 +158,32 @@ def validate_result_readiness(
     ).all()
 
     scores_by_key = {
-        (
-            score.student_id,
-            score.assessment_id,
-        ): float(score.score)
-        for score in scores
-    }
+    (
+        score.student_id,
+        score.assessment_id,
+    ): float(score.score)
+    for score in scores
+}
 
-    # ---------------------------------------------------------
-    # 5. VERIFY EVERY STUDENT RESULT IS COMPLETE
-    # ---------------------------------------------------------
+   # ---------------------------------------------------------
+   # 5. GET SCHOOL GRADING SCALES
+   # ---------------------------------------------------------
+
+    grading_scales = db.scalars(
+        select(GradingScale)
+        .where(
+            GradingScale.school_id == school_id
+        )
+        .order_by(
+            GradingScale.minimum_score.desc()
+        )
+    ).all()
+
+   # ---------------------------------------------------------
+   # 6. VERIFY EVERY STUDENT RESULT IS COMPLETE
+   # ---------------------------------------------------------
+
+
 
     incomplete_students = []
 
@@ -176,6 +193,7 @@ def validate_result_readiness(
             assessments=assessments,
             subjects_by_id=subjects_by_id,
             scores_by_key=scores_by_key,
+            grading_scales=grading_scales,
         )
 
         if computed["result_status"] != "COMPLETE":
