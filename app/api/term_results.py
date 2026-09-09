@@ -226,6 +226,8 @@ def get_student_term_result(
     # ---------------------------------------------------------
 
     scores = []
+    scores_by_key = {}
+
 
     if assessment_ids and class_student_ids:
         scores = db.scalars(
@@ -333,6 +335,9 @@ def get_student_term_result(
             / attendance_record.school_days
             * 100
         )
+    else:
+        attendance_percentage = 0.0
+
 
         attendance_summary = AttendanceSummary(
             school_days=(
