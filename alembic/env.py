@@ -16,6 +16,8 @@ from app.models import (
     Enrollment,
     Subject,
     TeachingAssignment,
+    PublishedReportSnapshot,
+    GradingScale,
 )
 
 
