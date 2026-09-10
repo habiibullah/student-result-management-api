@@ -1,11 +1,20 @@
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.core.dependencies import require_school_admin
 from app.database.connection import get_db
-from app.models import AcademicSession, Term, User
+from app.models import (
+    AcademicSession,
+    Assessment,
+    ResultPublication,
+    StudentAttendance,
+    Subscription,
+    Term,
+    TermReportComment,
+    User,
+)
 from app.schemas.term import (
     TermCreate,
     TermResponse,
@@ -253,6 +262,51 @@ def delete_term(
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Term not found",
+        )
+
+    assessment_count = db.scalar(
+        select(func.count(Assessment.id)).where(
+            Assessment.term_id == term.id
+        )
+    )
+
+    attendance_count = db.scalar(
+        select(func.count(StudentAttendance.id)).where(
+            StudentAttendance.term_id == term.id
+        )
+    )
+
+    comment_count = db.scalar(
+        select(func.count(TermReportComment.id)).where(
+            TermReportComment.term_id == term.id
+        )
+    )
+
+    subscription_count = db.scalar(
+        select(func.count(Subscription.id)).where(
+            Subscription.term_id == term.id
+        )
+    )
+
+    publication_count = db.scalar(
+        select(func.count(ResultPublication.id)).where(
+            ResultPublication.term_id == term.id
+        )
+    )
+
+    if (
+        assessment_count > 0
+        or attendance_count > 0
+        or comment_count > 0
+        or subscription_count > 0
+        or publication_count > 0
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=(
+                "Term cannot be deleted because it already has "
+                "academic records or related data."
+            ),
         )
 
     db.delete(term)

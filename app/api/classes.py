@@ -7,7 +7,14 @@ from app.core.dependencies import (
     require_school_admin,
 )
 from app.database.connection import get_db
-from app.models import Class, TeachingAssignment, User
+from app.models import (
+    Assessment,
+    Class,
+    Enrollment,
+    ResultPublication,
+    TeachingAssignment,
+    User,
+)
 from app.schemas.class_model import (
     ClassCreate,
     ClassResponse,
@@ -193,14 +200,37 @@ def delete_class(
         )
     )
 
-    if assignment_count > 0:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail=(
-                "Class cannot be deleted because it has "
-                "teaching assignments. Delete the assignments first."
-            ),
+    enrollment_count = db.scalar(
+        select(func.count(Enrollment.id)).where(
+            Enrollment.class_id == class_.id
         )
+    )
+
+    assessment_count = db.scalar(
+        select(func.count(Assessment.id)).where(
+            Assessment.class_id == class_.id
+        )
+    )
+
+    publication_count = db.scalar(
+        select(func.count(ResultPublication.id)).where(
+            ResultPublication.class_id == class_.id
+        )
+    )
+
+    if (
+       assignment_count > 0
+       or enrollment_count > 0
+       or assessment_count > 0
+       or publication_count > 0
+    ):
+       raise HTTPException(
+           status_code=status.HTTP_409_CONFLICT,
+           detail=(
+               "Class cannot be deleted because it already has "
+               "academic records or related assignments."
+           ),
+       )
 
     db.delete(class_)
     db.commit()

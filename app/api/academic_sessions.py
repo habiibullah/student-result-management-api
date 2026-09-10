@@ -7,7 +7,18 @@ from app.core.dependencies import (
     require_school_admin,
 )
 from app.database.connection import get_db
-from app.models import AcademicSession, TeachingAssignment, User
+from app.models import (
+    AcademicSession,
+    Assessment,
+    Enrollment,
+    ResultPublication,
+    StudentAttendance,
+    Subscription,
+    TeachingAssignment,
+    Term,
+    TermReportComment,
+    User,
+)
 from app.schemas.academic_session import (
     AcademicSessionCreate,
     AcademicSessionResponse,
@@ -223,12 +234,64 @@ def delete_academic_session(
         )
     )
 
-    if assignment_count > 0:
+    term_count = db.scalar(
+        select(func.count(Term.id)).where(
+            Term.academic_session_id == academic_session.id
+        )
+    )
+
+    enrollment_count = db.scalar(
+        select(func.count(Enrollment.id)).where(
+            Enrollment.academic_session_id == academic_session.id
+        )
+    )
+
+    assessment_count = db.scalar(
+        select(func.count(Assessment.id)).where(
+            Assessment.academic_session_id == academic_session.id
+        )
+    )
+
+    attendance_count = db.scalar(
+        select(func.count(StudentAttendance.id)).where(
+            StudentAttendance.academic_session_id == academic_session.id
+        )
+    )
+
+    comment_count = db.scalar(
+        select(func.count(TermReportComment.id)).where(
+            TermReportComment.academic_session_id == academic_session.id
+        )
+    )
+
+    subscription_count = db.scalar(
+        select(func.count(Subscription.id)).where(
+            Subscription.academic_session_id == academic_session.id
+        )
+    )
+
+    publication_count = db.scalar(
+        select(func.count(ResultPublication.id)).where(
+            ResultPublication.academic_session_id == academic_session.id
+        )
+    )
+
+
+    if (
+        assignment_count > 0
+        or term_count > 0
+        or enrollment_count > 0
+        or assessment_count > 0
+        or attendance_count > 0
+        or comment_count > 0
+        or subscription_count > 0
+        or publication_count > 0
+    ):
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail=(
-                "Academic session cannot be deleted because it has "
-                "teaching assignments. Delete the assignments first."
+                "Academic session cannot be deleted because it already has "
+                "academic records or related data."
             ),
         )
 

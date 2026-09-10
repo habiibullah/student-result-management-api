@@ -11,7 +11,7 @@ import jwt
 from app.core.config import settings
 from app.database.connection import get_db
 from app.models.user import User
-
+from app.models.school import School
 
 security = HTTPBearer()
 
@@ -74,6 +74,28 @@ def get_current_user(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="User account is inactive",
         )
+
+    # School-bound users must belong to an active school.
+    # Platform administrators have school_id=None and are unaffected.
+    if user.school_id is not None:
+        school = db.scalar(
+            select(School).where(
+            School.id == user.school_id,
+        )
+    )
+
+        if school is None:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="School account is unavailable",
+        )
+
+        if not school.is_active:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="School account is inactive",
+        )
+
 
     return user
 

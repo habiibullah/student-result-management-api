@@ -6,6 +6,7 @@ from app.core.config import settings
 from app.core.security import create_access_token, verify_password
 from app.database.connection import get_db
 from app.models import User
+from app.models.school import School
 from app.schemas.auth import LoginRequest, TokenResponse
 
 
@@ -36,6 +37,25 @@ def login(
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="User account is inactive",
+        )
+
+    if user.school_id is not None:
+        school = db.scalar(
+            select(School).where(
+            School.id == user.school_id,
+        )
+    )
+
+    if school is None:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="School account is unavailable",
+        )
+
+    if not school.is_active:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="School account is inactive",
         )
 
     if not verify_password(

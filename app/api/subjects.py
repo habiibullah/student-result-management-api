@@ -7,7 +7,12 @@ from app.core.dependencies import (
     require_school_admin,
 )
 from app.database.connection import get_db
-from app.models import Subject, TeachingAssignment, User
+from app.models import (
+    Assessment,
+    Subject,
+    TeachingAssignment,
+    User,
+)
 from app.schemas.subject import (
     SubjectCreate,
     SubjectResponse,
@@ -220,14 +225,21 @@ def delete_subject(
         )
     )
 
-    if assignment_count > 0:
+
+    assessment_count = db.scalar(
+        select(func.count(Assessment.id)).where(
+            Assessment.subject_id == subject.id
+        )
+    )
+
+    if assignment_count > 0 or assessment_count > 0:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail=(
-                "Subject cannot be deleted because it has "
-                "teaching assignments. Delete the assignments first."
-            ),
-        )
+                "Subject cannot be deleted because it already has "
+                "academic records or teaching assignments."
+        ),
+    )
 
     db.delete(subject)
     db.commit()
