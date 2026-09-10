@@ -236,6 +236,31 @@ def update_subscription_status(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Subscription not found",
         )
+    
+    allowed_transitions = {
+    "pending": {"active", "cancelled"},
+    "active": {"expired", "cancelled"},
+    "cancelled": {"pending"},
+    "expired": set(),
+    }
+
+    current_status = subscription.status.strip().lower()
+
+    # Allow an idempotent request that keeps the same status.
+    if normalized_status != current_status:
+        valid_next_statuses = allowed_transitions.get(
+            current_status,
+            set(),
+        )
+
+        if normalized_status not in valid_next_statuses:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=(
+                    f"Subscription status cannot change from "
+                    f"'{current_status}' to '{normalized_status}'"
+                ),
+            )
 
     subscription.status = normalized_status
 
@@ -243,10 +268,11 @@ def update_subscription_status(
         if subscription.activated_at is None:
             subscription.activated_at = datetime.utcnow()
 
-    elif normalized_status in {
-        "pending",
-        "cancelled",
-    }:
+    elif (
+        normalized_status == "pending"
+        and current_status == "cancelled"
+    ):
+
         subscription.activated_at = None
 
     db.commit()

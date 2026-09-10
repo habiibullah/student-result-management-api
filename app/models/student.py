@@ -29,7 +29,7 @@ class Student(Base):
         primary_key=True,
     )
 
-    user_id: Mapped[int] = mapped_column(
+    user_id: Mapped[int | None] = mapped_column(
         ForeignKey(
             "users.id",
             ondelete="SET NULL",

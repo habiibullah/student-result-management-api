@@ -37,7 +37,7 @@ from app.services.subscription_service import (
 from app.services.report_sheet_service import (
     build_student_report_sheet,
 )
-
+from app.models.student import Student
 
 router = APIRouter(
     prefix="/api/result-publications",
@@ -62,10 +62,27 @@ def validate_result_readiness(
     # ---------------------------------------------------------
 
     enrollments = db.scalars(
-        select(Enrollment).where(
+        select(Enrollment)
+        .join(
+            Student,
+            Enrollment.student_id == Student.id,
+        )
+        .join(
+            Class,
+            Enrollment.class_id == Class.id,
+        )
+        .join(
+            AcademicSession,
+            Enrollment.academic_session_id
+            == AcademicSession.id,
+        )
+        .where(
             Enrollment.class_id == class_id,
             Enrollment.academic_session_id
             == academic_session_id,
+            Student.school_id == school_id,
+            Class.school_id == school_id,
+            AcademicSession.school_id == school_id,
         )
     ).all()
 
@@ -88,12 +105,29 @@ def validate_result_readiness(
     # ---------------------------------------------------------
 
     assessments = db.scalars(
-        select(Assessment).where(
+        select(Assessment)
+        .join(
+            Class,
+            Assessment.class_id == Class.id,
+        )
+        .join(
+            AcademicSession,
+            Assessment.academic_session_id
+            == AcademicSession.id,
+        )
+        .join(
+            Term,
+            Assessment.term_id == Term.id,
+        )
+        .where(
             Assessment.class_id == class_id,
             Assessment.academic_session_id
             == academic_session_id,
             Assessment.term_id == term_id,
-        )
+            Class.school_id == school_id,
+            AcademicSession.school_id == school_id,
+            Term.academic_session_id == academic_session_id,
+       )
     ).all()
 
     if not assessments:

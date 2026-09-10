@@ -6,8 +6,10 @@ from sqlalchemy import (
     Boolean,
     DateTime,
     ForeignKey,
+    Index,
     String,
     UniqueConstraint,
+    text,
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -22,6 +24,12 @@ class AcademicSession(Base):
             "school_id",
             "name",
             name="uq_academic_sessions_school_name",
+        ),
+        Index(
+            "uq_academic_sessions_one_current_per_school",
+            "school_id",
+            unique=True,
+            postgresql_where=text("is_current = true"),
         ),
     )
 

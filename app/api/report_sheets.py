@@ -16,6 +16,7 @@ from app.schemas.report_sheet import StudentReportSheetResponse
 from app.services.report_sheet_service import (
     build_student_report_sheet,
 )
+from app.models.student import Student
 
 
 router = APIRouter(
@@ -36,10 +37,23 @@ def get_student_report_sheet(
     current_user: User = Depends(require_school_admin),
 ):
     enrollment = db.scalar(
-        select(Enrollment).where(
+        select(Enrollment)
+        .join(
+            Student,
+            Enrollment.student_id == Student.id,
+        )
+        .join(
+            AcademicSession,
+            Enrollment.academic_session_id
+            == AcademicSession.id,
+        )
+        .where(
             Enrollment.student_id == student_id,
             Enrollment.academic_session_id
             == academic_session_id,
+            Student.school_id == current_user.school_id,
+            AcademicSession.school_id
+            == current_user.school_id,
         )
     )
 

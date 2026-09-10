@@ -39,25 +39,6 @@ def login(
             detail="User account is inactive",
         )
 
-    if user.school_id is not None:
-        school = db.scalar(
-            select(School).where(
-            School.id == user.school_id,
-        )
-    )
-
-    if school is None:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="School account is unavailable",
-        )
-
-    if not school.is_active:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="School account is inactive",
-        )
-
     if not verify_password(
         credentials.password,
         user.password_hash,
@@ -66,6 +47,25 @@ def login(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid email or password",
         )
+
+    if user.school_id is not None:
+        school = db.scalar(
+            select(School).where(
+            School.id == user.school_id,
+        )
+    )
+
+        if school is None:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="School account is unavailable",
+            )
+
+        if not school.is_active:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="School account is inactive",
+            )
 
     access_token = create_access_token(
         subject=str(user.id),

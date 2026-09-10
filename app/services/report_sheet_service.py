@@ -93,11 +93,23 @@ def build_student_report_sheet(
     # ---------------------------------------------------------
 
     enrollment = db.scalar(
-        select(Enrollment).where(
+        select(Enrollment)
+        .join(
+            Student,
+            Enrollment.student_id == Student.id,
+        )
+        .join(
+            AcademicSession,
+            Enrollment.academic_session_id
+            == AcademicSession.id,
+        )
+        .where(
             Enrollment.student_id == student_id,
             Enrollment.academic_session_id
             == academic_session_id,
-        )
+            Student.school_id == school_id,
+            AcademicSession.school_id == school_id,
+       )
     )
 
     if enrollment is None:
@@ -217,10 +229,27 @@ def build_student_report_sheet(
     # ---------------------------------------------------------
 
     class_enrollments = db.scalars(
-        select(Enrollment).where(
+        select(Enrollment)
+        .join(
+            Student,
+            Enrollment.student_id == Student.id,
+        )
+        .join(
+            Class,
+            Enrollment.class_id == Class.id,
+        )
+        .join(
+            AcademicSession,
+            Enrollment.academic_session_id
+            == AcademicSession.id,
+        )
+        .where(
             Enrollment.class_id == enrollment.class_id,
             Enrollment.academic_session_id
             == academic_session_id,
+            Student.school_id == school_id,
+            Class.school_id == school_id,
+            AcademicSession.school_id == school_id,
         )
     ).all()
 
