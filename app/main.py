@@ -28,6 +28,9 @@ from app.api.subscription_plans import (
 from app.api.subscriptions import (
     router as subscriptions_router,
 )
+from app.api.payments import (
+    router as payments_router,
+)
 from app.api.result_publications import (
     router as result_publications_router,
 )
@@ -37,6 +40,10 @@ from app.api.grading_scales import (
 from app.api.report_settings import (
     router as report_settings_router,
 )
+from app.api.admin_management import (
+    router as admin_management_router,
+)
+
 
 app = FastAPI(
     title="Student Result Management API",
@@ -46,6 +53,7 @@ app = FastAPI(
 
 app.include_router(auth_router)
 app.include_router(users_router)
+app.include_router(admin_management_router)
 app.include_router(roles_router)
 app.include_router(subjects_router)
 app.include_router(teachers_router)
@@ -65,9 +73,12 @@ app.include_router(report_sheets_router)
 app.include_router(schools_router)
 app.include_router(subscription_plans_router)
 app.include_router(subscriptions_router)
+app.include_router(payments_router)
 app.include_router(result_publications_router)
 app.include_router(grading_scales_router)
 app.include_router(report_settings_router)
+
+
 
 @app.get("/")
 def root():

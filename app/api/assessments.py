@@ -19,6 +19,10 @@ from app.schemas.assessment import (
 from app.services.result_publication_service import (
     require_result_unpublished,
 )
+from app.services.subscription_service import (
+    require_active_term_subscription,
+)
+
 
 router = APIRouter(
     prefix="/api/assessments",
@@ -85,7 +89,8 @@ def create_assessment(
         select(Term)
         .join(
             AcademicSession,
-            Term.academic_session_id == AcademicSession.id,
+            Term.academic_session_id
+            == AcademicSession.id,
         )
         .where(
             Term.id == assessment_data.term_id,
@@ -113,24 +118,40 @@ def create_assessment(
             ),
         )
 
+    # Require an active subscription for this exact term.
+    require_active_term_subscription(
+        db=db,
+        school_id=current_user.school_id,
+        academic_session_id=(
+            assessment_data.academic_session_id
+        ),
+        term_id=assessment_data.term_id,
+    )
 
+    # Published results must remain locked.
     require_result_unpublished(
         db=db,
         class_id=assessment_data.class_id,
-        academic_session_id=assessment_data.academic_session_id,
+        academic_session_id=(
+            assessment_data.academic_session_id
+        ),
         term_id=assessment_data.term_id,
     )
 
     existing_assessment = db.scalar(
         select(Assessment).where(
-            Assessment.class_id == assessment_data.class_id,
-            Assessment.subject_id == assessment_data.subject_id,
+            Assessment.class_id
+            == assessment_data.class_id,
+            Assessment.subject_id
+            == assessment_data.subject_id,
             Assessment.academic_session_id
             == assessment_data.academic_session_id,
-            Assessment.term_id == assessment_data.term_id,
+            Assessment.term_id
+            == assessment_data.term_id,
             Assessment.assessment_type
             == assessment_data.assessment_type,
-            Assessment.sequence == assessment_data.sequence,
+            Assessment.sequence
+            == assessment_data.sequence,
         )
     )
 
@@ -143,9 +164,13 @@ def create_assessment(
     assessment = Assessment(
         class_id=assessment_data.class_id,
         subject_id=assessment_data.subject_id,
-        academic_session_id=assessment_data.academic_session_id,
+        academic_session_id=(
+            assessment_data.academic_session_id
+        ),
         term_id=assessment_data.term_id,
-        assessment_type=assessment_data.assessment_type,
+        assessment_type=(
+            assessment_data.assessment_type
+        ),
         sequence=assessment_data.sequence,
         name=assessment_data.name,
         max_score=assessment_data.max_score,
@@ -155,6 +180,7 @@ def create_assessment(
 
     try:
         db.commit()
+
     except IntegrityError:
         db.rollback()
 
@@ -285,10 +311,23 @@ def update_assessment(
             detail="Assessment not found",
         )
 
+    # Subscription must still be active before academic
+    # records for this term can be changed.
+    require_active_term_subscription(
+        db=db,
+        school_id=current_user.school_id,
+        academic_session_id=(
+            assessment.academic_session_id
+        ),
+        term_id=assessment.term_id,
+    )
+
     require_result_unpublished(
         db=db,
         class_id=assessment.class_id,
-        academic_session_id=assessment.academic_session_id,
+        academic_session_id=(
+            assessment.academic_session_id
+        ),
         term_id=assessment.term_id,
     )
 
@@ -301,6 +340,7 @@ def update_assessment(
 
     try:
         db.commit()
+
     except IntegrityError:
         db.rollback()
 
@@ -353,10 +393,23 @@ def delete_assessment(
             detail="Assessment not found",
         )
 
+    # Subscription must remain active before deleting
+    # academic records belonging to this term.
+    require_active_term_subscription(
+        db=db,
+        school_id=current_user.school_id,
+        academic_session_id=(
+            assessment.academic_session_id
+        ),
+        term_id=assessment.term_id,
+    )
+
     require_result_unpublished(
         db=db,
         class_id=assessment.class_id,
-        academic_session_id=assessment.academic_session_id,
+        academic_session_id=(
+            assessment.academic_session_id
+        ),
         term_id=assessment.term_id,
     )
 
