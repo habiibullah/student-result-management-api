@@ -1,16 +1,23 @@
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+from starlette.middleware.trustedhost import TrustedHostMiddleware
 from sqlalchemy import text
 
+from app.core.config import settings
+from app.database.connection import engine
 
 from app.api.roles import router as roles_router
 from app.api.users import router as users_router
 from app.api.auth import router as auth_router
-from app.database.connection import engine
 from app.api.subjects import router as subjects_router
 from app.api.teachers import router as teachers_router
-from app.api.teaching_assignments import router as teaching_assignments_router
+from app.api.teaching_assignments import (
+    router as teaching_assignments_router,
+)
 from app.api.classes import router as classes_router
-from app.api.academic_sessions import router as academic_sessions_router
+from app.api.academic_sessions import (
+    router as academic_sessions_router,
+)
 from app.api.students import router as students_router
 from app.api.enrollments import router as enrollments_router
 from app.api.terms import router as terms_router
@@ -18,67 +25,121 @@ from app.api.assessments import router as assessments_router
 from app.api.student_scores import router as student_scores_router
 from app.api.results import router as results_router
 from app.api.term_results import router as term_results_router
-from app.api.student_attendance import router as student_attendance_router
-from app.api.term_report_comments import router as term_report_comments_router
+from app.api.student_attendance import (
+    router as student_attendance_router,
+)
+from app.api.term_report_comments import (
+    router as term_report_comments_router,
+)
 from app.api.report_sheets import router as report_sheets_router
 from app.api.schools import router as schools_router
 from app.api.subscription_plans import (
     router as subscription_plans_router,
 )
-from app.api.subscriptions import (
-    router as subscriptions_router,
-)
-from app.api.payments import (
-    router as payments_router,
-)
+from app.api.subscriptions import router as subscriptions_router
+from app.api.payments import router as payments_router
 from app.api.result_publications import (
     router as result_publications_router,
 )
-from app.api.grading_scales import (
-    router as grading_scales_router,
-)
-from app.api.report_settings import (
-    router as report_settings_router,
-)
+from app.api.grading_scales import router as grading_scales_router
+from app.api.report_settings import router as report_settings_router
 from app.api.admin_management import (
     router as admin_management_router,
 )
 
 
+# ---------------------------------------------------------
+# FASTAPI APPLICATION
+# ---------------------------------------------------------
+
 app = FastAPI(
     title="Student Result Management API",
-    description="Backend API for managing students, classes, subjects, scores, and academic results.",
+    description=(
+        "Multi-school SaaS backend API for managing schools, "
+        "students, teachers, classes, subjects, assessments, "
+        "scores, academic results, subscriptions, and payments."
+    ),
     version="1.0.0",
+    docs_url="/docs" if settings.enable_docs else None,
+    redoc_url="/redoc" if settings.enable_docs else None,
+    openapi_url="/openapi.json" if settings.enable_docs else None,
 )
+
+
+# ---------------------------------------------------------
+# TRUSTED HOSTS
+# ---------------------------------------------------------
+
+allowed_hosts = settings.allowed_host_list
+
+if allowed_hosts != ["*"]:
+    app.add_middleware(
+        TrustedHostMiddleware,
+        allowed_hosts=allowed_hosts,
+    )
+
+
+# ---------------------------------------------------------
+# CORS
+# ---------------------------------------------------------
+
+cors_origins = settings.cors_origin_list
+
+if cors_origins:
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=cors_origins,
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
+
+
+# ---------------------------------------------------------
+# ROUTERS
+# ---------------------------------------------------------
 
 app.include_router(auth_router)
 app.include_router(users_router)
 app.include_router(admin_management_router)
 app.include_router(roles_router)
+
 app.include_router(subjects_router)
 app.include_router(teachers_router)
 app.include_router(teaching_assignments_router)
+
 app.include_router(classes_router)
 app.include_router(academic_sessions_router)
 app.include_router(students_router)
 app.include_router(enrollments_router)
 app.include_router(terms_router)
+
 app.include_router(assessments_router)
 app.include_router(student_scores_router)
+
 app.include_router(results_router)
 app.include_router(term_results_router)
+
 app.include_router(student_attendance_router)
 app.include_router(term_report_comments_router)
+
 app.include_router(report_sheets_router)
+
 app.include_router(schools_router)
+
 app.include_router(subscription_plans_router)
 app.include_router(subscriptions_router)
 app.include_router(payments_router)
+
 app.include_router(result_publications_router)
+
 app.include_router(grading_scales_router)
 app.include_router(report_settings_router)
 
 
+# ---------------------------------------------------------
+# HEALTH ENDPOINTS
+# ---------------------------------------------------------
 
 @app.get("/")
 def root():
@@ -90,7 +151,7 @@ def root():
 @app.get("/health")
 def health_check():
     return {
-        "status": "healthy"
+        "status": "healthy",
     }
 
 
@@ -101,5 +162,5 @@ def database_health_check():
 
     return {
         "status": "healthy",
-        "database": "connected"
+        "database": "connected",
     }
