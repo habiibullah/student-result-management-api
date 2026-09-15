@@ -3,6 +3,10 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from app.core.dependencies import (
+    require_platform_admin,
+    require_school_admin,
+)
 from app.core.security import hash_password
 from app.database.connection import get_db
 from app.models.school import School
@@ -13,7 +17,6 @@ from app.schemas.school import (
     SchoolResponse,
     SchoolUpdate,
 )
-from app.core.dependencies import require_school_admin
 
 router = APIRouter(
     prefix="/api/schools",
@@ -138,6 +141,24 @@ def register_school(
         role=school_admin.role,
         message="School registered successfully",
     )
+
+
+@router.get(
+    "",
+    response_model=list[SchoolResponse],
+)
+def list_schools(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_platform_admin),
+):
+    statement = select(School).order_by(
+        School.name.asc(),
+        School.id.asc(),
+    )
+
+    schools = db.scalars(statement).all()
+
+    return list(schools)
 
 
 @router.get(
