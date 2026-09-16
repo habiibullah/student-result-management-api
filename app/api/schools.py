@@ -32,6 +32,7 @@ router = APIRouter(
 def register_school(
     payload: SchoolRegistrationRequest,
     db: Session = Depends(get_db),
+    current_user: User = Depends(require_platform_admin),
 ):
     normalized_slug = payload.school_slug.strip().lower()
     normalized_admin_email = str(
