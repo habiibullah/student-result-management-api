@@ -65,6 +65,9 @@ class SchoolUpdate(BaseModel):
         max_length=500,
     )
 
+class SchoolStatusUpdate(BaseModel):
+    is_active: bool
+
 class SchoolResponse(BaseModel):
     id: int
     name: str
