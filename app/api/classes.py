@@ -163,7 +163,7 @@ def update_class(
     if class_data.name is not None:
         class_.name = class_data.name
 
-    if class_data.description is not None:
+    if "description" in class_data.model_fields_set:
         class_.description = class_data.description
 
     db.commit()
