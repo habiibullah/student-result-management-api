@@ -16,7 +16,7 @@ from app.models.school import School
 security = HTTPBearer()
 
 
-def get_current_user(
+def get_authenticated_user(
     credentials: HTTPAuthorizationCredentials = Depends(security),
     db: Session = Depends(get_db),
 ) -> User:
@@ -98,6 +98,20 @@ def get_current_user(
 
 
     return user
+
+
+def get_current_user(
+    authenticated_user: User = Depends(
+        get_authenticated_user
+    ),
+) -> User:
+    if authenticated_user.must_change_password:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Password change required",
+        )
+
+    return authenticated_user
 
 
 def require_admin(

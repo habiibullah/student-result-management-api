@@ -1,3 +1,5 @@
+from app.models.user import User
+
 def login(
     client,
     email,
@@ -612,4 +614,398 @@ def test_duplicate_admin_email_is_rejected(
 
     assert response.json()["detail"] == (
         "A user with this email already exists"
+    )
+
+def test_platform_admin_can_reset_school_admin_password(
+    client,
+    db,
+    platform_admin,
+    school_admin,
+):
+    token = login(
+        client,
+        platform_admin.email,
+    )
+
+    response = client.post(
+        (
+            "/api/admin-management/users/"
+            f"{school_admin.id}/reset-password"
+        ),
+        headers=auth_headers(token),
+        json={
+            "temporary_password": "TemporaryPassword123!",
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json()["message"] == (
+        "Password reset successfully"
+    )
+
+    db.refresh(school_admin)
+
+    assert school_admin.must_change_password is True
+
+    old_login = client.post(
+        "/api/auth/login",
+        json={
+            "email": school_admin.email,
+            "password": "TestPassword123!",
+        },
+    )
+
+    assert old_login.status_code == 401
+
+    temporary_login = client.post(
+        "/api/auth/login",
+        json={
+            "email": school_admin.email,
+            "password": "TemporaryPassword123!",
+        },
+    )
+
+    assert temporary_login.status_code == 200
+
+
+def test_school_admin_can_reset_own_school_teacher_password(
+    client,
+    db,
+    school_admin,
+    school_one_teacher,
+):
+    token = login(
+        client,
+        school_admin.email,
+    )
+
+    response = client.post(
+        (
+            "/api/admin-management/users/"
+            f"{school_one_teacher.user_id}/reset-password"
+        ),
+        headers=auth_headers(token),
+        json={
+            "temporary_password": "TemporaryPassword123!",
+        },
+    )
+
+    assert response.status_code == 200
+
+    target_user = db.get(
+        User,
+        school_one_teacher.user_id,
+    )
+
+    assert target_user.must_change_password is True
+
+    temporary_login = client.post(
+        "/api/auth/login",
+        json={
+            "email": target_user.email,
+            "password": "TemporaryPassword123!",
+        },
+    )
+
+    assert temporary_login.status_code == 200
+
+
+def test_school_admin_cannot_reset_other_school_teacher_password(
+    client,
+    db,
+    school_admin,
+    school_two_teacher,
+):
+    target_user = db.get(
+        User,
+        school_two_teacher.user_id,
+    )
+
+    original_password_hash = target_user.password_hash
+
+    token = login(
+        client,
+        school_admin.email,
+    )
+
+    response = client.post(
+        (
+            "/api/admin-management/users/"
+            f"{target_user.id}/reset-password"
+        ),
+        headers=auth_headers(token),
+        json={
+            "temporary_password": "TemporaryPassword123!",
+        },
+    )
+
+    assert response.status_code == 403
+
+    db.refresh(target_user)
+
+    assert (
+        target_user.password_hash
+        == original_password_hash
+    )
+    assert target_user.must_change_password is False
+
+
+def test_school_admin_cannot_reset_another_school_admin_password(
+    client,
+    db,
+    school_admin,
+    second_school_admin,
+):
+    original_password_hash = (
+        second_school_admin.password_hash
+    )
+
+    token = login(
+        client,
+        school_admin.email,
+    )
+
+    response = client.post(
+        (
+            "/api/admin-management/users/"
+            f"{second_school_admin.id}/reset-password"
+        ),
+        headers=auth_headers(token),
+        json={
+            "temporary_password": "TemporaryPassword123!",
+        },
+    )
+
+    assert response.status_code == 403
+
+    db.refresh(second_school_admin)
+
+    assert (
+        second_school_admin.password_hash
+        == original_password_hash
+    )
+    assert (
+        second_school_admin.must_change_password
+        is False
+    )
+
+
+def test_school_admin_cannot_reset_platform_admin_password(
+    client,
+    db,
+    school_admin,
+    platform_admin,
+):
+    original_password_hash = (
+        platform_admin.password_hash
+    )
+
+    token = login(
+        client,
+        school_admin.email,
+    )
+
+    response = client.post(
+        (
+            "/api/admin-management/users/"
+            f"{platform_admin.id}/reset-password"
+        ),
+        headers=auth_headers(token),
+        json={
+            "temporary_password": "TemporaryPassword123!",
+        },
+    )
+
+    assert response.status_code == 403
+
+    db.refresh(platform_admin)
+
+    assert (
+        platform_admin.password_hash
+        == original_password_hash
+    )
+    assert platform_admin.must_change_password is False
+
+
+def test_password_reset_rejects_unknown_user(
+    client,
+    platform_admin,
+):
+    token = login(
+        client,
+        platform_admin.email,
+    )
+
+    response = client.post(
+        "/api/admin-management/users/999999/reset-password",
+        headers=auth_headers(token),
+        json={
+            "temporary_password": "TemporaryPassword123!",
+        },
+    )
+
+    assert response.status_code == 404
+
+
+def test_password_reset_requires_authentication(
+    client,
+    school_admin,
+):
+    response = client.post(
+        (
+            "/api/admin-management/users/"
+            f"{school_admin.id}/reset-password"
+        ),
+        json={
+            "temporary_password": "TemporaryPassword123!",
+        },
+    )
+
+    assert response.status_code == 401
+
+
+def test_password_reset_rejects_short_temporary_password(
+    client,
+    platform_admin,
+    school_admin,
+):
+    token = login(
+        client,
+        platform_admin.email,
+    )
+
+    response = client.post(
+        (
+            "/api/admin-management/users/"
+            f"{school_admin.id}/reset-password"
+        ),
+        headers=auth_headers(token),
+        json={
+            "temporary_password": "short",
+        },
+    )
+
+    assert response.status_code == 422
+
+def test_admin_reset_requires_password_change_before_normal_access(
+    client,
+    db,
+    platform_admin,
+    school_admin,
+):
+    # Platform admin logs in.
+    admin_login = client.post(
+        "/api/auth/login",
+        json={
+            "email": platform_admin.email,
+            "password": "TestPassword123!",
+        },
+    )
+
+    assert admin_login.status_code == 200
+
+    admin_token = admin_login.json()["access_token"]
+
+    # Platform admin resets the school admin's password.
+    reset_response = client.post(
+        (
+            "/api/admin-management/users/"
+            f"{school_admin.id}/reset-password"
+        ),
+        headers={
+            "Authorization": f"Bearer {admin_token}",
+        },
+        json={
+            "temporary_password": "TemporaryPassword123!",
+        },
+    )
+
+    assert reset_response.status_code == 200
+
+    db.refresh(school_admin)
+
+    assert school_admin.must_change_password is True
+
+    # School admin logs in using the temporary password.
+    temporary_login = client.post(
+        "/api/auth/login",
+        json={
+            "email": school_admin.email,
+            "password": "TemporaryPassword123!",
+        },
+    )
+
+    assert temporary_login.status_code == 200
+
+    login_data = temporary_login.json()
+
+    assert login_data["must_change_password"] is True
+
+    temporary_token = login_data["access_token"]
+
+    # Normal protected access must be blocked.
+    blocked_response = client.get(
+        "/api/classes",
+        headers={
+            "Authorization": f"Bearer {temporary_token}",
+        },
+    )
+
+    assert blocked_response.status_code == 403
+    assert blocked_response.json()["detail"] == (
+        "Password change required"
+    )
+
+    # The user is still allowed to change the temporary password.
+    change_response = client.post(
+        "/api/auth/change-password",
+        headers={
+            "Authorization": f"Bearer {temporary_token}",
+        },
+        json={
+            "current_password": "TemporaryPassword123!",
+            "new_password": "PrivatePassword456!",
+        },
+    )
+
+    assert change_response.status_code == 200
+
+    db.refresh(school_admin)
+
+    assert school_admin.must_change_password is False
+
+    # Normal access is restored after the password change.
+    restored_response = client.get(
+        "/api/classes",
+        headers={
+            "Authorization": f"Bearer {temporary_token}",
+        },
+    )
+
+    assert restored_response.status_code == 200
+
+    # The temporary password must no longer work.
+    old_password_login = client.post(
+        "/api/auth/login",
+        json={
+            "email": school_admin.email,
+            "password": "TemporaryPassword123!",
+        },
+    )
+
+    assert old_password_login.status_code == 401
+
+    # The user's private password must work.
+    new_password_login = client.post(
+        "/api/auth/login",
+        json={
+            "email": school_admin.email,
+            "password": "PrivatePassword456!",
+        },
+    )
+
+    assert new_password_login.status_code == 200
+    assert (
+        new_password_login.json()["must_change_password"]
+        is False
     )

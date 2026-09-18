@@ -318,3 +318,214 @@ def test_failed_change_password_preserves_existing_password(
     )
 
     assert rejected_password_login.status_code == 401
+
+def test_login_reports_password_change_required(
+    client,
+    db,
+    platform_admin,
+):
+    platform_admin.must_change_password = True
+    db.commit()
+
+    response = client.post(
+        "/api/auth/login",
+        json={
+            "email": platform_admin.email,
+            "password": "TestPassword123!",
+        },
+    )
+
+    assert response.status_code == 200
+
+    data = response.json()
+
+    assert "access_token" in data
+    assert data["must_change_password"] is True
+
+
+def test_normal_login_reports_password_change_not_required(
+    client,
+    platform_admin,
+):
+    response = client.post(
+        "/api/auth/login",
+        json={
+            "email": platform_admin.email,
+            "password": "TestPassword123!",
+        },
+    )
+
+    assert response.status_code == 200
+    assert (
+        response.json()["must_change_password"]
+        is False
+    )
+
+
+def test_user_requiring_password_change_cannot_access_normal_route(
+    client,
+    db,
+    platform_admin,
+):
+    platform_admin.must_change_password = True
+    db.commit()
+
+    login_response = client.post(
+        "/api/auth/login",
+        json={
+            "email": platform_admin.email,
+            "password": "TestPassword123!",
+        },
+    )
+
+    assert login_response.status_code == 200
+
+    token = login_response.json()["access_token"]
+
+    response = client.get(
+        "/api/schools",
+        headers={
+            "Authorization": f"Bearer {token}",
+        },
+    )
+
+    assert response.status_code == 403
+    assert response.json()["detail"] == (
+        "Password change required"
+    )
+
+
+def test_user_requiring_password_change_can_change_password(
+    client,
+    db,
+    platform_admin,
+):
+    platform_admin.must_change_password = True
+    db.commit()
+
+    login_response = client.post(
+        "/api/auth/login",
+        json={
+            "email": platform_admin.email,
+            "password": "TestPassword123!",
+        },
+    )
+
+    assert login_response.status_code == 200
+
+    token = login_response.json()["access_token"]
+
+    response = client.post(
+        "/api/auth/change-password",
+        headers={
+            "Authorization": f"Bearer {token}",
+        },
+        json={
+            "current_password": "TestPassword123!",
+            "new_password": "PrivatePassword456!",
+        },
+    )
+
+    assert response.status_code == 200
+
+    db.refresh(platform_admin)
+
+    assert platform_admin.must_change_password is False
+
+
+def test_password_change_restores_normal_access(
+    client,
+    db,
+    platform_admin,
+):
+    platform_admin.must_change_password = True
+    db.commit()
+
+    login_response = client.post(
+        "/api/auth/login",
+        json={
+            "email": platform_admin.email,
+            "password": "TestPassword123!",
+        },
+    )
+
+    token = login_response.json()["access_token"]
+
+    blocked_response = client.get(
+        "/api/schools",
+        headers={
+            "Authorization": f"Bearer {token}",
+        },
+    )
+
+    assert blocked_response.status_code == 403
+
+    change_response = client.post(
+        "/api/auth/change-password",
+        headers={
+            "Authorization": f"Bearer {token}",
+        },
+        json={
+            "current_password": "TestPassword123!",
+            "new_password": "PrivatePassword456!",
+        },
+    )
+
+    assert change_response.status_code == 200
+
+    restored_response = client.get(
+        "/api/schools",
+        headers={
+            "Authorization": f"Bearer {token}",
+        },
+    )
+
+    assert restored_response.status_code == 200
+
+
+def test_failed_forced_password_change_preserves_requirement(
+    client,
+    db,
+    platform_admin,
+):
+    platform_admin.must_change_password = True
+    db.commit()
+
+    login_response = client.post(
+        "/api/auth/login",
+        json={
+            "email": platform_admin.email,
+            "password": "TestPassword123!",
+        },
+    )
+
+    token = login_response.json()["access_token"]
+
+    response = client.post(
+        "/api/auth/change-password",
+        headers={
+            "Authorization": f"Bearer {token}",
+        },
+        json={
+            "current_password": "WrongPassword123!",
+            "new_password": "PrivatePassword456!",
+        },
+    )
+
+    assert response.status_code == 400
+
+    db.refresh(platform_admin)
+
+    assert platform_admin.must_change_password is True
+
+    blocked_response = client.get(
+        "/api/schools",
+        headers={
+            "Authorization": f"Bearer {token}",
+        },
+    )
+
+    assert blocked_response.status_code == 403
+    assert blocked_response.json()["detail"] == (
+        "Password change required"
+    )

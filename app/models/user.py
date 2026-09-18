@@ -36,6 +36,12 @@ class User(Base):
         default=True,
     )
 
+    must_change_password: Mapped[bool] = mapped_column(
+        Boolean,
+        nullable=False,
+        default=False,
+    )
+
     school_id: Mapped[int | None] = mapped_column(
         ForeignKey("schools.id"),
         nullable=True,

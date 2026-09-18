@@ -18,6 +18,8 @@ from app.database.connection import get_db
 from app.models.school import School
 from app.models.user import User
 from app.schemas.admin_management import (
+    AdminPasswordResetRequest,
+    AdminPasswordResetResponse,
     AdminStatusUpdate,
     AdminUserResponse,
     PlatformAdminCreate,
@@ -438,3 +440,81 @@ def update_school_admin_status(
     db.refresh(admin)
 
     return build_admin_response(admin)
+
+
+@router.post(
+    "/users/{user_id}/reset-password",
+    response_model=AdminPasswordResetResponse,
+)
+def reset_user_password(
+    user_id: int,
+    payload: AdminPasswordResetRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin),
+):
+    target_user = db.get(User, user_id)
+
+    if target_user is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User not found",
+        )
+
+    # Platform administrators may reset passwords only
+    # for school administrators.
+    if current_user.school_id is None:
+        if not (
+            target_user.role == "admin"
+            and target_user.school_id is not None
+        ):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=(
+                    "Platform administrators may reset "
+                    "passwords only for school administrators"
+                ),
+            )
+
+    # School administrators may reset passwords only
+    # for non-admin users belonging to their own school.
+    else:
+        if target_user.school_id != current_user.school_id:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=(
+                    "You cannot reset the password of a user "
+                    "from another school"
+                ),
+            )
+
+        if target_user.role == "admin":
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=(
+                    "School administrators cannot reset "
+                    "administrator passwords"
+                ),
+            )
+
+        if target_user.role not in {
+            "teacher",
+            "student",
+        }:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=(
+                    "You cannot reset the password of "
+                    "this user"
+                ),
+            )
+
+    target_user.password_hash = hash_password(
+        payload.temporary_password
+    )
+    target_user.must_change_password = True
+
+    db.commit()
+
+    return AdminPasswordResetResponse(
+        message="Password reset successfully"
+    )

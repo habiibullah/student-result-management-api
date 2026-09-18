@@ -3,7 +3,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
-from app.core.dependencies import get_current_user
+from app.core.dependencies import get_authenticated_user
 from app.core.security import (
     create_access_token,
     hash_password,
@@ -87,6 +87,8 @@ def login(
     return TokenResponse(
         access_token=access_token,
         token_type="bearer",
+        must_change_password=user.must_change_password,
+
     )
 
 
@@ -97,7 +99,7 @@ def login(
 def change_password(
     payload: ChangePasswordRequest,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(get_authenticated_user),
 ):
     if not verify_password(
         payload.current_password,
@@ -123,6 +125,8 @@ def change_password(
     current_user.password_hash = hash_password(
         payload.new_password
     )
+
+    current_user.must_change_password = False
 
     db.commit()
 
