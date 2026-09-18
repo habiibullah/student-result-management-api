@@ -742,3 +742,42 @@ def test_unrelated_users_token_remains_valid_after_password_reset(
     )
 
     assert response.status_code == 200
+
+def test_forced_password_change_user_can_access_own_profile(
+    client,
+    db,
+    platform_admin,
+):
+    platform_admin.must_change_password = True
+    db.commit()
+
+    login_response = client.post(
+        "/api/auth/login",
+        json={
+            "email": platform_admin.email,
+            "password": "TestPassword123!",
+        },
+    )
+
+    assert login_response.status_code == 200
+
+    login_data = login_response.json()
+    assert login_data["must_change_password"] is True
+
+    token = login_data["access_token"]
+
+    response = client.get(
+        "/api/users/me",
+        headers={
+            "Authorization": f"Bearer {token}",
+        },
+    )
+
+    assert response.status_code == 200
+
+    data = response.json()
+
+    assert data["id"] == platform_admin.id
+    assert data["email"] == platform_admin.email
+    assert data["account_type"] == "platform_admin"
+    assert data["must_change_password"] is True

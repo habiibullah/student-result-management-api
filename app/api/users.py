@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends
 
-from app.core.dependencies import get_current_user
+from app.core.dependencies import get_authenticated_user
 from app.models.user import User
 
 
@@ -12,7 +12,7 @@ router = APIRouter(
 
 @router.get("/me")
 def get_me(
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(get_authenticated_user),
 ):
     account_type = current_user.role
 
@@ -29,4 +29,7 @@ def get_me(
         "account_type": account_type,
         "school_id": current_user.school_id,
         "is_active": current_user.is_active,
+        "must_change_password": (
+            current_user.must_change_password
+        ),
     }
