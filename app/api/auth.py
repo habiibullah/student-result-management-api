@@ -80,6 +80,7 @@ def login(
     access_token = create_access_token(
         subject=str(user.id),
         role=user.role,
+        token_version=user.token_version,
         secret_key=settings.jwt_secret_key,
         expires_minutes=settings.access_token_expire_minutes,
     )
@@ -127,6 +128,8 @@ def change_password(
     )
 
     current_user.must_change_password = False
+    current_user.token_version += 1
+
 
     db.commit()
 

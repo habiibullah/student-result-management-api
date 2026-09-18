@@ -433,7 +433,7 @@ def test_user_requiring_password_change_can_change_password(
     assert platform_admin.must_change_password is False
 
 
-def test_password_change_restores_normal_access(
+def test_forced_password_change_requires_new_login_for_access(
     client,
     db,
     platform_admin,
@@ -441,30 +441,33 @@ def test_password_change_restores_normal_access(
     platform_admin.must_change_password = True
     db.commit()
 
-    login_response = client.post(
+    temporary_login = client.post(
         "/api/auth/login",
         json={
             "email": platform_admin.email,
             "password": "TestPassword123!",
         },
     )
+    assert temporary_login.status_code == 200
 
-    token = login_response.json()["access_token"]
+    old_token = temporary_login.json()["access_token"]
 
+    # Normal access is blocked while a password change
+    # is required.
     blocked_response = client.get(
         "/api/schools",
-        headers={
-            "Authorization": f"Bearer {token}",
-        },
+        headers={"Authorization": f"Bearer {old_token}"},
     )
 
     assert blocked_response.status_code == 403
+    assert blocked_response.json()["detail"] == (
+        "Password change required"
+    )
 
+    # The flagged user can still change the password.
     change_response = client.post(
         "/api/auth/change-password",
-        headers={
-            "Authorization": f"Bearer {token}",
-        },
+        headers={"Authorization": f"Bearer {old_token}"},
         json={
             "current_password": "TestPassword123!",
             "new_password": "PrivatePassword456!",
@@ -473,15 +476,43 @@ def test_password_change_restores_normal_access(
 
     assert change_response.status_code == 200
 
-    restored_response = client.get(
+    db.refresh(platform_admin)
+    assert platform_admin.must_change_password is False
+
+    # Changing the password increments token_version,
+    # so the token used for the change is now revoked.
+    revoked_response = client.get(
         "/api/schools",
-        headers={
-            "Authorization": f"Bearer {token}",
+        headers={"Authorization": f"Bearer {old_token}"},
+    )
+
+    assert revoked_response.status_code == 401
+    assert revoked_response.json()["detail"] == (
+        "Token has been revoked"
+    )
+
+    # The user must authenticate with the new password.
+    new_login = client.post(
+        "/api/auth/login",
+        json={
+            "email": platform_admin.email,
+            "password": "PrivatePassword456!",
         },
     )
 
-    assert restored_response.status_code == 200
+    assert new_login.status_code == 200
+    assert new_login.json()["must_change_password"] is False
 
+    new_token = new_login.json()["access_token"]
+
+    # A newly issued token carries the current
+    # token_version and restores normal access.
+    restored_response = client.get(
+        "/api/schools",
+        headers={"Authorization": f"Bearer {new_token}"},
+    )
+
+    assert restored_response.status_code == 200
 
 def test_failed_forced_password_change_preserves_requirement(
     client,
@@ -529,3 +560,185 @@ def test_failed_forced_password_change_preserves_requirement(
     assert blocked_response.json()["detail"] == (
         "Password change required"
     )
+
+def test_password_change_invalidates_previously_issued_token(
+    client,
+    platform_admin,
+):
+    first_login = client.post(
+        "/api/auth/login",
+        json={
+            "email": platform_admin.email,
+            "password": "TestPassword123!",
+        },
+    )
+    assert first_login.status_code == 200
+    old_token = first_login.json()["access_token"]
+
+    change_response = client.post(
+        "/api/auth/change-password",
+        headers={"Authorization": f"Bearer {old_token}"},
+        json={
+            "current_password": "TestPassword123!",
+            "new_password": "PrivatePassword456!",
+        },
+    )
+    assert change_response.status_code == 200
+
+    old_token_response = client.get(
+        "/api/schools",
+        headers={"Authorization": f"Bearer {old_token}"},
+    )
+
+    assert old_token_response.status_code == 401
+    assert old_token_response.json()["detail"] == (
+        "Token has been revoked"
+    )
+
+
+def test_new_login_after_password_change_receives_valid_token(
+    client,
+    platform_admin,
+):
+    first_login = client.post(
+        "/api/auth/login",
+        json={
+            "email": platform_admin.email,
+            "password": "TestPassword123!",
+        },
+    )
+    assert first_login.status_code == 200
+    old_token = first_login.json()["access_token"]
+
+    change_response = client.post(
+        "/api/auth/change-password",
+        headers={"Authorization": f"Bearer {old_token}"},
+        json={
+            "current_password": "TestPassword123!",
+            "new_password": "PrivatePassword456!",
+        },
+    )
+    assert change_response.status_code == 200
+
+    second_login = client.post(
+        "/api/auth/login",
+        json={
+            "email": platform_admin.email,
+            "password": "PrivatePassword456!",
+        },
+    )
+
+    assert second_login.status_code == 200
+
+    new_token = second_login.json()["access_token"]
+
+    protected_response = client.get(
+        "/api/schools",
+        headers={"Authorization": f"Bearer {new_token}"},
+    )
+
+    assert protected_response.status_code == 200
+
+
+def test_admin_password_reset_invalidates_existing_target_token(
+    client,
+    platform_admin,
+    school_admin,
+):
+    school_admin_login = client.post(
+        "/api/auth/login",
+        json={
+            "email": school_admin.email,
+            "password": "TestPassword123!",
+        },
+    )
+    assert school_admin_login.status_code == 200
+    old_school_admin_token = (
+        school_admin_login.json()["access_token"]
+    )
+
+    platform_admin_login = client.post(
+        "/api/auth/login",
+        json={
+            "email": platform_admin.email,
+            "password": "TestPassword123!",
+        },
+    )
+    assert platform_admin_login.status_code == 200
+    platform_admin_token = (
+        platform_admin_login.json()["access_token"]
+    )
+
+    reset_response = client.post(
+        (
+            "/api/admin-management/users/"
+            f"{school_admin.id}/reset-password"
+        ),
+        headers={
+            "Authorization": f"Bearer {platform_admin_token}",
+        },
+        json={
+            "temporary_password": "TemporaryPassword123!",
+        },
+    )
+
+    assert reset_response.status_code == 200
+
+    old_token_response = client.get(
+        "/api/classes",
+        headers={
+            "Authorization": (
+                f"Bearer {old_school_admin_token}"
+            ),
+        },
+    )
+
+    assert old_token_response.status_code == 401
+    assert old_token_response.json()["detail"] == (
+        "Token has been revoked"
+    )
+
+
+def test_unrelated_users_token_remains_valid_after_password_reset(
+    client,
+    platform_admin,
+    school_admin,
+):
+    platform_admin_login = client.post(
+        "/api/auth/login",
+        json={
+            "email": platform_admin.email,
+            "password": "TestPassword123!",
+        },
+    )
+    assert platform_admin_login.status_code == 200
+
+    platform_admin_token = (
+        platform_admin_login.json()["access_token"]
+    )
+
+    reset_response = client.post(
+        (
+            "/api/admin-management/users/"
+            f"{school_admin.id}/reset-password"
+        ),
+        headers={
+            "Authorization": f"Bearer {platform_admin_token}",
+        },
+        json={
+            "temporary_password": "TemporaryPassword123!",
+        },
+    )
+
+    assert reset_response.status_code == 200
+
+    # Resetting the school admin must not revoke the
+    # platform admin's own token.
+    response = client.get(
+        "/api/schools",
+        headers={
+            "Authorization": f"Bearer {platform_admin_token}",
+        },
+    )
+
+    assert response.status_code == 200

@@ -18,6 +18,7 @@ def verify_password(password: str, hashed_password: str) -> bool:
 def create_access_token(
     subject: str,
     role: str,
+    token_version: int,
     secret_key: str,
     expires_minutes: int,
 ) -> str:
@@ -28,6 +29,7 @@ def create_access_token(
     payload = {
         "sub": subject,
         "role": role,
+        "token_version": token_version,
         "exp": expire,
     }
 

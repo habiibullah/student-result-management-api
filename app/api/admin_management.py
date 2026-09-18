@@ -512,6 +512,7 @@ def reset_user_password(
         payload.temporary_password
     )
     target_user.must_change_password = True
+    target_user.token_version += 1
 
     db.commit()
 

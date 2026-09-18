@@ -901,7 +901,6 @@ def test_admin_reset_requires_password_change_before_normal_access(
             "password": "TestPassword123!",
         },
     )
-
     assert admin_login.status_code == 200
 
     admin_token = admin_login.json()["access_token"]
@@ -923,7 +922,6 @@ def test_admin_reset_requires_password_change_before_normal_access(
     assert reset_response.status_code == 200
 
     db.refresh(school_admin)
-
     assert school_admin.must_change_password is True
 
     # School admin logs in using the temporary password.
@@ -938,12 +936,12 @@ def test_admin_reset_requires_password_change_before_normal_access(
     assert temporary_login.status_code == 200
 
     login_data = temporary_login.json()
-
     assert login_data["must_change_password"] is True
 
     temporary_token = login_data["access_token"]
 
-    # Normal protected access must be blocked.
+    # Normal protected access is blocked until the
+    # temporary password is changed.
     blocked_response = client.get(
         "/api/classes",
         headers={
@@ -956,7 +954,7 @@ def test_admin_reset_requires_password_change_before_normal_access(
         "Password change required"
     )
 
-    # The user is still allowed to change the temporary password.
+    # The user can still change the temporary password.
     change_response = client.post(
         "/api/auth/change-password",
         headers={
@@ -971,18 +969,21 @@ def test_admin_reset_requires_password_change_before_normal_access(
     assert change_response.status_code == 200
 
     db.refresh(school_admin)
-
     assert school_admin.must_change_password is False
 
-    # Normal access is restored after the password change.
-    restored_response = client.get(
+    # Password change increments token_version, so the
+    # temporary token must now be revoked.
+    revoked_response = client.get(
         "/api/classes",
         headers={
             "Authorization": f"Bearer {temporary_token}",
         },
     )
 
-    assert restored_response.status_code == 200
+    assert revoked_response.status_code == 401
+    assert revoked_response.json()["detail"] == (
+        "Token has been revoked"
+    )
 
     # The temporary password must no longer work.
     old_password_login = client.post(
@@ -995,7 +996,7 @@ def test_admin_reset_requires_password_change_before_normal_access(
 
     assert old_password_login.status_code == 401
 
-    # The user's private password must work.
+    # The user must log in again with the new password.
     new_password_login = client.post(
         "/api/auth/login",
         json={
@@ -1009,3 +1010,16 @@ def test_admin_reset_requires_password_change_before_normal_access(
         new_password_login.json()["must_change_password"]
         is False
     )
+
+    new_token = new_password_login.json()["access_token"]
+
+    # The newly issued token has the current token_version
+    # and restores normal access.
+    restored_response = client.get(
+        "/api/classes",
+        headers={
+            "Authorization": f"Bearer {new_token}",
+        },
+    )
+
+    assert restored_response.status_code == 200

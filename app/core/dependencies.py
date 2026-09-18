@@ -30,6 +30,7 @@ def get_authenticated_user(
         )
 
         user_id = payload.get("sub")
+        token_version = payload.get("token_version")
 
         if user_id is None:
             raise HTTPException(
@@ -68,6 +69,15 @@ def get_authenticated_user(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="User not found",
         )
+
+    if (
+        token_version is None
+        or token_version != user.token_version
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Token has been revoked",
+    )
 
     if not user.is_active:
         raise HTTPException(

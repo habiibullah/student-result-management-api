@@ -2,7 +2,7 @@ from datetime import datetime
 
 from sqlalchemy import Boolean, DateTime, Enum, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
-from sqlalchemy import ForeignKey
+from sqlalchemy import Boolean, ForeignKey, Integer, String
 
 from app.database.base import Base
 
@@ -40,6 +40,12 @@ class User(Base):
         Boolean,
         nullable=False,
         default=False,
+    )
+
+    token_version: Mapped[int] = mapped_column(
+        Integer,
+        nullable=False,
+        default=0,
     )
 
     school_id: Mapped[int | None] = mapped_column(
