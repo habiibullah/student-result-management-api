@@ -57,4 +57,5 @@ class StudentResponse(BaseModel):
     last_name: str
     date_of_birth: date | None
     gender: str | None
+    has_profile_photo: bool = False
     created_at: datetime

@@ -22,3 +22,5 @@ tests/
 ngrok
 
 .DS_Store
+
+private_uploads/

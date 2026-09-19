@@ -22,3 +22,6 @@ ngrok
 htmlcov/
 
 *.log
+
+# Private student photographs and other uploaded files
+private_uploads/

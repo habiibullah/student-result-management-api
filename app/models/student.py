@@ -13,7 +13,6 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database.base import Base
 
-
 class Student(Base):
     __tablename__ = "students"
 
@@ -69,6 +68,15 @@ class Student(Base):
         String(20),
         nullable=True,
     )
+
+    profile_photo_path: Mapped[str | None] = mapped_column(
+        String(255),
+        nullable=True,
+    )
+
+    @property
+    def has_profile_photo(self) -> bool:
+        return self.profile_photo_path is not None
 
     created_at: Mapped[datetime] = mapped_column(
         DateTime,

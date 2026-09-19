@@ -12,6 +12,16 @@ from app.schemas.student import (
     StudentUpdate,
 )
 
+from pathlib import Path
+from uuid import uuid4
+
+from fastapi import File, UploadFile
+from fastapi.responses import FileResponse
+from app.core.student_photo_storage import (
+    MAX_PHOTO_BYTES,
+    student_photo_directory,
+    validate_student_photo,
+)
 
 router = APIRouter(
     prefix="/api/students",
@@ -142,6 +152,112 @@ def get_student(
 
     return student
 
+@router.post(
+    "/{student_id}/photo",
+    response_model=StudentResponse,
+)
+def upload_student_photo(
+    student_id: int,
+    photo: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_school_admin),
+):
+    student = db.scalar(
+        select(Student).where(
+            Student.id == student_id,
+            Student.school_id == current_user.school_id,
+        )
+    )
+
+    if student is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Student not found",
+        )
+
+    try:
+        content = photo.file.read(MAX_PHOTO_BYTES + 1)
+        normalized_photo = validate_student_photo(content)
+    finally:
+        photo.file.close()
+
+    photo_directory = student_photo_directory()
+    photo_directory.mkdir(parents=True, exist_ok=True)
+
+    filename = f"{uuid4().hex}.jpg"
+    new_photo_path = photo_directory / filename
+
+    try:
+        new_photo_path.write_bytes(normalized_photo)
+    except OSError:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Could not save student photograph",
+        )
+
+    old_photo_path = student.profile_photo_path
+    student.profile_photo_path = filename
+
+    try:
+        db.commit()
+        db.refresh(student)
+    except Exception:
+        db.rollback()
+        new_photo_path.unlink(missing_ok=True)
+        raise
+
+    if old_photo_path and old_photo_path != filename:
+        old_path = photo_directory / Path(old_photo_path).name
+        old_path.unlink(missing_ok=True)
+
+    return student
+
+@router.get(
+    "/{student_id}/photo",
+)
+def get_student_photo(
+    student_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_school_admin),
+):
+    student = db.scalar(
+        select(Student).where(
+            Student.id == student_id,
+            Student.school_id == current_user.school_id,
+        )
+    )
+
+    if student is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Student not found",
+        )
+
+    if not student.profile_photo_path:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Student photograph not found",
+        )
+
+    photo_directory = student_photo_directory()
+    photo_path = photo_directory / Path(
+        student.profile_photo_path
+    ).name
+
+    if not photo_path.is_file():
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Student photograph not found",
+        )
+
+    return FileResponse(
+        path=photo_path,
+        media_type="image/jpeg",
+        headers={
+            "Cache-Control": "private, no-store",
+            "X-Content-Type-Options": "nosniff",
+        },
+    )
 
 @router.patch(
     "/{student_id}",
