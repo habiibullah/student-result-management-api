@@ -88,7 +88,6 @@ def create_enrollment(
     existing_enrollment = db.scalar(
         select(Enrollment).where(
             Enrollment.student_id == enrollment_data.student_id,
-            Enrollment.class_id == enrollment_data.class_id,
             Enrollment.academic_session_id
             == enrollment_data.academic_session_id,
         )
@@ -98,7 +97,7 @@ def create_enrollment(
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail=(
-                "Student is already enrolled in this class "
+                "Student is already assigned to a class "
                 "for this academic session"
             ),
         )
@@ -118,7 +117,7 @@ def create_enrollment(
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail=(
-                "Student is already enrolled in this class "
+                "Student is already assigned to a class "
                 "for this academic session"
             ),
         )
@@ -305,7 +304,6 @@ def update_enrollment(
     duplicate = db.scalar(
         select(Enrollment).where(
             Enrollment.student_id == enrollment.student_id,
-            Enrollment.class_id == new_class_id,
             Enrollment.academic_session_id
             == new_academic_session_id,
             Enrollment.id != enrollment_id,
@@ -316,7 +314,7 @@ def update_enrollment(
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail=(
-                "Student is already enrolled in this class "
+                "Student is already assigned to a class "
                 "for this academic session"
             ),
         )
@@ -336,7 +334,7 @@ def update_enrollment(
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail=(
-                "Student is already enrolled in this class "
+                "Student is already assigned to a class "
                 "for this academic session"
             ),
         )

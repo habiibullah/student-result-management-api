@@ -11,13 +11,12 @@ from app.database.base import Base
 class Enrollment(Base):
     __tablename__ = "enrollments"
     __table_args__ = (
-    UniqueConstraint(
-        "student_id",
-        "class_id",
-        "academic_session_id",
-        name="uq_student_class_session",
-    ),
-)
+        UniqueConstraint(
+            "student_id",
+            "academic_session_id",
+            name="uq_student_session_enrollment",
+        ),
+    )
 
     id: Mapped[int] = mapped_column(primary_key=True)
 
