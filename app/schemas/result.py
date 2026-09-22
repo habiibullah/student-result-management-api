@@ -10,7 +10,6 @@ class ResultResponse(BaseModel):
 
     ca1: float | None
     ca2: float | None
-    ca3: float | None
     exam: float | None
 
     total: float | None

@@ -76,7 +76,6 @@ def compute_student_term_result(
     for subject_id, subject_assessments in grouped_assessments.items():
         ca1 = None
         ca2 = None
-        ca3 = None
         exam = None
 
         for assessment in subject_assessments:
@@ -99,18 +98,12 @@ def compute_student_term_result(
             ):
                 ca2 = score
 
-            elif (
-                assessment.assessment_type == "CA"
-                and assessment.sequence == 3
-            ):
-                ca3 = score
-
             elif assessment.assessment_type == "EXAM":
                 exam = score
 
         is_complete = all(
             value is not None
-            for value in [ca1, ca2, ca3, exam]
+            for value in [ca1, ca2, exam]
         )
 
         total = None
@@ -118,10 +111,10 @@ def compute_student_term_result(
         status = "INCOMPLETE"
 
         if is_complete:
-            total = ca1 + ca2 + ca3 + exam
+            total = ca1 + ca2 + exam
             grade = calculate_grade(
-                 total,
-                 grading_scales,
+                total,
+                grading_scales,
             )
             status = "COMPLETE"
             completed_totals.append(total)
@@ -138,7 +131,6 @@ def compute_student_term_result(
                 ),
                 "ca1": ca1,
                 "ca2": ca2,
-                "ca3": ca3,
                 "exam": exam,
                 "total": total,
                 "grade": grade,

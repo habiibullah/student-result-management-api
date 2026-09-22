@@ -38,7 +38,7 @@ def assessment_payload(
         "assessment_type": "CA",
         "sequence": sequence,
         "name": name,
-        "max_score": 10,
+        "max_score": 20,
     }
 
 
@@ -93,7 +93,7 @@ def test_active_subscription_allows_assessment_creation(
     assert data["term_id"] == first_term.id
     assert data["assessment_type"] == "CA"
     assert data["sequence"] == 1
-    assert data["max_score"] == 10
+    assert data["max_score"] == 20
 
 
 def test_pending_subscription_blocks_assessment_creation(
@@ -123,6 +123,66 @@ def test_pending_subscription_blocks_assessment_creation(
 
     assert_subscription_required(response)
 
+def test_assessment_schema_accepts_ca2_and_exam():
+    from app.schemas.assessment import AssessmentCreate
+
+    base = {
+        "class_id": 1,
+        "subject_id": 1,
+        "academic_session_id": 1,
+        "term_id": 1,
+        "name": "Assessment",
+    }
+
+    ca2 = AssessmentCreate(
+        **base,
+        assessment_type="CA",
+        sequence=2,
+        max_score=20,
+    )
+    exam = AssessmentCreate(
+        **base,
+        assessment_type="EXAM",
+        sequence=1,
+        max_score=60,
+    )
+
+    assert ca2.sequence == 2
+    assert ca2.max_score == 20
+    assert exam.sequence == 1
+    assert exam.max_score == 60
+
+
+def test_assessment_schema_rejects_invalid_sequences_and_scores():
+    import pytest
+    from pydantic import ValidationError
+
+    from app.schemas.assessment import AssessmentCreate
+
+    base = {
+        "class_id": 1,
+        "subject_id": 1,
+        "academic_session_id": 1,
+        "term_id": 1,
+        "name": "Assessment",
+    }
+
+    invalid_assessments = [
+        ("CA", 3, 20),     # CA3 is no longer permitted
+        ("CA", 1, 10),     # Old CA maximum
+        ("CA", 2, 60),     # Incorrect CA maximum
+        ("EXAM", 1, 70),   # Old examination maximum
+        ("EXAM", 2, 60),   # Only one examination is permitted
+    ]
+
+    for assessment_type, sequence, max_score in invalid_assessments:
+        with pytest.raises(ValidationError):
+            AssessmentCreate(
+                **base,
+                assessment_type=assessment_type,
+                sequence=sequence,
+                max_score=max_score,
+            )
 
 def test_cancelled_subscription_blocks_assessment_creation(
     client,

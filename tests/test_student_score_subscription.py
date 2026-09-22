@@ -71,7 +71,7 @@ def create_assessment(
         assessment_type="CA",
         sequence=1,
         name=name,
-        max_score=10,
+        max_score=20,
     )
 
     db.add(assessment)

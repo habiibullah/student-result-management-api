@@ -143,18 +143,7 @@ def prepare_complete_result(
         assessment_type="CA",
         sequence=2,
         name="CA 2",
-        max_score=10,
-    )
-
-    ca3 = Assessment(
-        class_id=class_record.id,
-        subject_id=assessment.subject_id,
-        academic_session_id=academic_session.id,
-        term_id=assessment.term_id,
-        assessment_type="CA",
-        sequence=3,
-        name="CA 3",
-        max_score=10,
+        max_score=20,
     )
 
     exam = Assessment(
@@ -165,20 +154,18 @@ def prepare_complete_result(
         assessment_type="EXAM",
         sequence=1,
         name="Examination",
-        max_score=70,
+        max_score=60,
     )
 
     db.add_all(
         [
             ca2,
-            ca3,
             exam,
         ]
     )
     db.commit()
 
     db.refresh(ca2)
-    db.refresh(ca3)
     db.refresh(exam)
 
     create_score(
@@ -186,13 +173,6 @@ def prepare_complete_result(
         student_id=student.id,
         assessment_id=ca2.id,
         score=7,
-    )
-
-    create_score(
-        db=db,
-        student_id=student.id,
-        assessment_id=ca3.id,
-        score=9,
     )
 
     create_score(

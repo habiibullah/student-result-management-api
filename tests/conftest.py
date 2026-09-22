@@ -757,7 +757,7 @@ def active_term_assessment(
         assessment_type="CA",
         sequence=1,
         name="First CA",
-        max_score=10,
+        max_score=20,
     )
 
     db.add(assessment)
@@ -784,7 +784,7 @@ def pending_term_assessment(
         assessment_type="CA",
         sequence=1,
         name="Pending Term CA",
-        max_score=10,
+        max_score=20,
     )
 
     db.add(assessment)
@@ -811,7 +811,7 @@ def school_two_assessment(
         assessment_type="CA",
         sequence=1,
         name="School Two CA",
-        max_score=10,
+        max_score=20,
     )
 
     db.add(assessment)

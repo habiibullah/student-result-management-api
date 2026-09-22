@@ -19,19 +19,21 @@ class AssessmentCreate(BaseModel):
         assessment_type = self.assessment_type.upper()
 
         if assessment_type == "CA":
-            if self.sequence not in (1, 2, 3):
-                raise ValueError("CA sequence must be 1, 2, or 3")
+            if self.sequence not in (1, 2):
+                raise ValueError("CA sequence must be 1 or 2")
 
-            if self.max_score != 10:
-                raise ValueError("CA assessments must have a maximum score of 10")
+            if self.max_score != 20:
+                raise ValueError(
+                    "CA assessments must have a maximum score of 20"
+                )
 
         elif assessment_type == "EXAM":
             if self.sequence != 1:
                 raise ValueError("Examination sequence must be 1")
 
-            if self.max_score != 70:
+            if self.max_score != 60:
                 raise ValueError(
-                    "Examination must have a maximum score of 70"
+                    "Examination must have a maximum score of 60"
                 )
 
         else:

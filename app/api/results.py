@@ -195,13 +195,10 @@ def get_student_result(
 
     ca1 = None
     ca2 = None
-    ca3 = None
     exam = None
 
     for assessment in assessments:
-        score = score_by_assessment.get(
-            assessment.id
-        )
+        score = score_by_assessment.get(assessment.id)
 
         if (
             assessment.assessment_type == "CA"
@@ -215,22 +212,16 @@ def get_student_result(
         ):
             ca2 = score
 
-        elif (
-            assessment.assessment_type == "CA"
-            and assessment.sequence == 3
-        ):
-            ca3 = score
-
         elif assessment.assessment_type == "EXAM":
             exam = score
 
     is_complete = all(
         value is not None
-        for value in [ca1, ca2, ca3, exam]
+        for value in [ca1, ca2, exam]
     )
 
     if is_complete:
-        total = ca1 + ca2 + ca3 + exam
+        total = ca1 + ca2 + exam
         percentage = total
         grade = calculate_grade(
             total,
@@ -251,7 +242,6 @@ def get_student_result(
         term_id=term_id,
         ca1=ca1,
         ca2=ca2,
-        ca3=ca3,
         exam=exam,
         total=total,
         percentage=percentage,
