@@ -2,6 +2,7 @@ from copy import deepcopy
 
 from app.models.assessment import Assessment
 from app.models.enrollment import Enrollment
+from app.models.grading_scale import GradingScale
 from app.models.published_report_snapshot import PublishedReportSnapshot
 from app.models.result_publication import ResultPublication
 from app.models.student_score import StudentScore
@@ -248,6 +249,7 @@ def test_publication_creates_student_report_snapshot(
     client,
     db,
     school_admin,
+    school_one,
     school_one_student,
     school_one_class,
     academic_session_one,
@@ -255,6 +257,17 @@ def test_publication_creates_student_report_snapshot(
     active_term_assessment,
     active_subscription,
 ):
+    db.add(
+        GradingScale(
+            school_id=school_one.id,
+            grade="A",
+            minimum_score=70,
+            maximum_score=100,
+            remark="Excellent performance",
+        )
+    )
+    db.commit()
+
     prepare_complete_result(
         db=db,
         student=school_one_student,
@@ -317,6 +330,8 @@ def test_publication_creates_student_report_snapshot(
     for subject in report_data["subjects"]:
         assert subject["subject_position"] == 1
         assert subject["class_average"] == subject["total"]
+        assert subject["grade"] == "A"
+        assert subject["remark"] == "Excellent performance"
 
 
 # ============================================================
@@ -1053,3 +1068,52 @@ def test_snapshot_preserves_published_report_data(
         stored_report["performance"]["result_status"]
         == "COMPLETE"
     )
+
+
+def test_unpublished_report_has_no_remark_for_incomplete_subject(
+    client,
+    db,
+    school_admin,
+    school_one,
+    school_one_student,
+    school_one_class,
+    academic_session_one,
+    first_term,
+    active_term_assessment,
+):
+    db.add(
+        GradingScale(
+            school_id=school_one.id,
+            grade="A",
+            minimum_score=70,
+            maximum_score=100,
+            remark="Excellent performance",
+        )
+    )
+    db.commit()
+
+    create_enrollment(
+        db=db,
+        student_id=school_one_student.id,
+        class_id=school_one_class.id,
+        academic_session_id=academic_session_one.id,
+    )
+
+    token = login(client, school_admin.email)
+
+    response = client.get(
+        f"/api/report-sheets/student/{school_one_student.id}",
+        headers=auth_headers(token),
+        params={
+            "academic_session_id": academic_session_one.id,
+            "term_id": first_term.id,
+        },
+    )
+
+    assert response.status_code == 200
+
+    subjects = response.json()["subjects"]
+    assert len(subjects) == 1
+    assert subjects[0]["status"] == "INCOMPLETE"
+    assert subjects[0]["grade"] is None
+    assert subjects[0]["remark"] is None

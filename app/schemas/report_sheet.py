@@ -17,6 +17,7 @@ class ReportSheetSubject(BaseModel):
 
     subject_position: int | None = None
     class_average: float | None = None
+    remark: str | None = None
 
 
 class ReportSheetAttendance(BaseModel):

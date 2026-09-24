@@ -514,6 +514,14 @@ def build_student_report_sheet(
                     .get(subject["subject_id"], {})
                     .get("class_average")
                 ),
+                "remark": next(
+                    (
+                        scale.remark
+                        for scale in grading_scales
+                        if scale.grade == subject["grade"]
+                    ),
+                    None,
+                ) if subject["status"] == "COMPLETE" else None,
             }
             for subject in computed["subjects"]
         ],
