@@ -1,9 +1,10 @@
 from fastapi import APIRouter, Depends, HTTPException, status
+from pydantic import BaseModel, ConfigDict
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app.core.dependencies import require_school_admin
+from app.core.dependencies import require_school_admin, require_score_manager
 from app.database.connection import get_db
 from app.models.academic_session import AcademicSession
 from app.models.assessment import Assessment
@@ -25,11 +26,102 @@ from app.services.result_publication_service import (
     require_result_unpublished,
 )
 
+from app.models.teacher import Teacher
+from app.models.teaching_assignment import TeachingAssignment
 
 router = APIRouter(
     prefix="/api/student-scores",
     tags=["Student Scores"],
 )
+
+def require_assessment_assignment(
+    db: Session,
+    current_user: User,
+    assessment: Assessment,
+) -> None:
+    """Restrict teachers to their assigned subject, class, and session."""
+    if current_user.role == "admin":
+        return
+
+    assignment = db.scalar(
+        select(TeachingAssignment)
+        .join(
+            Teacher,
+            TeachingAssignment.teacher_id == Teacher.id,
+        )
+        .where(
+            Teacher.user_id == current_user.id,
+            Teacher.school_id == current_user.school_id,
+            TeachingAssignment.subject_id == assessment.subject_id,
+            TeachingAssignment.class_id == assessment.class_id,
+            TeachingAssignment.academic_session_id
+            == assessment.academic_session_id,
+        )
+    )
+
+    if assignment is None:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Teacher is not assigned to this assessment",
+        )
+
+class AssessmentStudentResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    admission_number: str
+    first_name: str
+    last_name: str
+
+
+@router.get(
+    "/assessments/{assessment_id}/students",
+    response_model=list[AssessmentStudentResponse],
+)
+def get_assessment_students(
+    assessment_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_score_manager),
+):
+    assessment = db.scalar(
+        select(Assessment)
+        .join(Class, Assessment.class_id == Class.id)
+        .join(Subject, Assessment.subject_id == Subject.id)
+        .join(
+            AcademicSession,
+            Assessment.academic_session_id == AcademicSession.id,
+        )
+        .where(
+            Assessment.id == assessment_id,
+            Class.school_id == current_user.school_id,
+            Subject.school_id == current_user.school_id,
+            AcademicSession.school_id == current_user.school_id,
+        )
+    )
+
+    if assessment is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Assessment not found",
+        )
+
+    require_assessment_assignment(
+        db=db,
+        current_user=current_user,
+        assessment=assessment,
+    )
+
+    return db.scalars(
+        select(Student)
+        .join(Enrollment, Enrollment.student_id == Student.id)
+        .where(
+            Student.school_id == current_user.school_id,
+            Enrollment.class_id == assessment.class_id,
+            Enrollment.academic_session_id
+            == assessment.academic_session_id,
+        )
+        .order_by(Student.last_name, Student.first_name, Student.id)
+    ).all()
 
 
 @router.post(
@@ -40,7 +132,7 @@ router = APIRouter(
 def create_student_score(
     score_data: StudentScoreCreate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_school_admin),
+    current_user: User = Depends(require_score_manager),
 ):
     student = db.scalar(
         select(Student).where(
@@ -84,6 +176,12 @@ def create_student_score(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Assessment not found",
         )
+
+    require_assessment_assignment(
+        db=db,
+        current_user=current_user,
+        assessment=assessment,
+    )
 
     require_active_term_subscription(
         db=db,
@@ -193,42 +291,48 @@ def create_student_score(
 )
 def get_student_scores(
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_school_admin),
+    current_user: User = Depends(require_score_manager),
 ):
-    scores = db.scalars(
+    query = (
         select(StudentScore)
-        .join(
-            Student,
-            StudentScore.student_id == Student.id,
-        )
-        .join(
-            Assessment,
-            StudentScore.assessment_id == Assessment.id,
-        )
-        .join(
-            Class,
-            Assessment.class_id == Class.id,
-        )
-        .join(
-            Subject,
-            Assessment.subject_id == Subject.id,
-        )
+        .join(Student, StudentScore.student_id == Student.id)
+        .join(Assessment, StudentScore.assessment_id == Assessment.id)
+        .join(Class, Assessment.class_id == Class.id)
+        .join(Subject, Assessment.subject_id == Subject.id)
         .join(
             AcademicSession,
-            Assessment.academic_session_id
-            == AcademicSession.id,
+            Assessment.academic_session_id == AcademicSession.id,
         )
         .where(
             Student.school_id == current_user.school_id,
             Class.school_id == current_user.school_id,
             Subject.school_id == current_user.school_id,
-            AcademicSession.school_id
-            == current_user.school_id,
+            AcademicSession.school_id == current_user.school_id,
         )
-        .order_by(StudentScore.id)
-    ).all()
+    )
 
-    return scores
+    if current_user.role == "teacher":
+        query = (
+            query.join(
+                TeachingAssignment,
+                (TeachingAssignment.subject_id == Assessment.subject_id)
+                & (TeachingAssignment.class_id == Assessment.class_id)
+                & (
+                    TeachingAssignment.academic_session_id
+                    == Assessment.academic_session_id
+                ),
+            )
+            .join(
+                Teacher,
+                TeachingAssignment.teacher_id == Teacher.id,
+            )
+            .where(
+                Teacher.user_id == current_user.id,
+                Teacher.school_id == current_user.school_id,
+            )
+        )
+
+    return db.scalars(query.order_by(StudentScore.id)).all()
 
 
 @router.get(
@@ -238,38 +342,24 @@ def get_student_scores(
 def get_student_score(
     score_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_school_admin),
+    current_user: User = Depends(require_score_manager),
 ):
     student_score = db.scalar(
         select(StudentScore)
-        .join(
-            Student,
-            StudentScore.student_id == Student.id,
-        )
-        .join(
-            Assessment,
-            StudentScore.assessment_id == Assessment.id,
-        )
-        .join(
-            Class,
-            Assessment.class_id == Class.id,
-        )
-        .join(
-            Subject,
-            Assessment.subject_id == Subject.id,
-        )
+        .join(Student, StudentScore.student_id == Student.id)
+        .join(Assessment, StudentScore.assessment_id == Assessment.id)
+        .join(Class, Assessment.class_id == Class.id)
+        .join(Subject, Assessment.subject_id == Subject.id)
         .join(
             AcademicSession,
-            Assessment.academic_session_id
-            == AcademicSession.id,
+            Assessment.academic_session_id == AcademicSession.id,
         )
         .where(
             StudentScore.id == score_id,
             Student.school_id == current_user.school_id,
             Class.school_id == current_user.school_id,
             Subject.school_id == current_user.school_id,
-            AcademicSession.school_id
-            == current_user.school_id,
+            AcademicSession.school_id == current_user.school_id,
         )
     )
 
@@ -278,6 +368,12 @@ def get_student_score(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Student score not found",
         )
+
+    require_assessment_assignment(
+        db=db,
+        current_user=current_user,
+        assessment=student_score.assessment,
+    )
 
     return student_score
 
@@ -290,7 +386,7 @@ def update_student_score(
     score_id: int,
     score_data: StudentScoreUpdate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_school_admin),
+    current_user: User = Depends(require_score_manager),
 ):
     student_score = db.scalar(
         select(StudentScore)
@@ -342,6 +438,12 @@ def update_student_score(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Assessment not found",
         )
+
+    require_assessment_assignment(
+        db=db,
+        current_user=current_user,
+        assessment=assessment,
+    )
 
     require_active_term_subscription(
         db=db,

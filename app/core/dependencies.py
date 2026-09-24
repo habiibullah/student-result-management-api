@@ -191,6 +191,23 @@ def require_teacher(
 
     return current_user
 
+def require_score_manager(
+    current_user: User = Depends(get_current_user),
+) -> User:
+    """Allow school administrators and teachers to manage scores."""
+    if current_user.school_id is None:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="School membership required",
+        )
+
+    if current_user.role not in ("admin", "teacher"):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="School admin or teacher access required",
+        )
+
+    return current_user
 
 def require_student(
     current_user: User = Depends(get_current_user),

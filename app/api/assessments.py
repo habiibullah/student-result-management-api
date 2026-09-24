@@ -3,13 +3,15 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app.core.dependencies import require_school_admin
+from app.core.dependencies import require_school_admin, require_score_manager
 from app.database.connection import get_db
 from app.models.academic_session import AcademicSession
 from app.models.assessment import Assessment
 from app.models.class_model import Class
 from app.models.subject import Subject
 from app.models.term import Term
+from app.models.teacher import Teacher
+from app.models.teaching_assignment import TeachingAssignment
 from app.models.user import User
 from app.schemas.assessment import (
     AssessmentCreate,
@@ -200,33 +202,45 @@ def create_assessment(
 )
 def get_assessments(
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_school_admin),
+    current_user: User = Depends(require_score_manager),
 ):
-    assessments = db.scalars(
+    query = (
         select(Assessment)
-        .join(
-            Class,
-            Assessment.class_id == Class.id,
-        )
-        .join(
-            Subject,
-            Assessment.subject_id == Subject.id,
-        )
+        .join(Class, Assessment.class_id == Class.id)
+        .join(Subject, Assessment.subject_id == Subject.id)
         .join(
             AcademicSession,
-            Assessment.academic_session_id
-            == AcademicSession.id,
+            Assessment.academic_session_id == AcademicSession.id,
         )
         .where(
             Class.school_id == current_user.school_id,
             Subject.school_id == current_user.school_id,
-            AcademicSession.school_id
-            == current_user.school_id,
+            AcademicSession.school_id == current_user.school_id,
         )
-        .order_by(Assessment.id)
-    ).all()
+    )
 
-    return assessments
+    if current_user.role == "teacher":
+        query = (
+            query.join(
+                TeachingAssignment,
+                (TeachingAssignment.subject_id == Assessment.subject_id)
+                & (TeachingAssignment.class_id == Assessment.class_id)
+                & (
+                    TeachingAssignment.academic_session_id
+                    == Assessment.academic_session_id
+                ),
+            )
+            .join(
+                Teacher,
+                TeachingAssignment.teacher_id == Teacher.id,
+            )
+            .where(
+                Teacher.user_id == current_user.id,
+                Teacher.school_id == current_user.school_id,
+            )
+        )
+
+    return db.scalars(query.order_by(Assessment.id)).all()
 
 
 @router.get(
