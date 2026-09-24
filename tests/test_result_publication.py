@@ -313,6 +313,11 @@ def test_publication_creates_student_report_snapshot(
         == "COMPLETE"
     )
 
+    assert report_data["subjects"]
+    for subject in report_data["subjects"]:
+        assert subject["subject_position"] == 1
+        assert subject["class_average"] == subject["total"]
+
 
 # ============================================================
 # READINESS

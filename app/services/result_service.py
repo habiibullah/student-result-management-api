@@ -226,3 +226,127 @@ def calculate_class_positions(
         previous_position = position
 
     return positions
+
+
+def calculate_subject_statistics(student_results):
+    """Calculate averages and positions from completed subject totals.
+
+    student_results maps student IDs to result dictionaries containing
+    a "subjects" list. A subject with total=None is excluded.
+    Equal totals share a position; the next position is skipped.
+    """
+    subject_totals = {}
+
+    for student_id, student_result in student_results.items():
+        for subject in student_result["subjects"]:
+            subject_id = subject["subject_id"]
+            total = subject["total"]
+
+            subject_totals.setdefault(subject_id, {})
+
+            if total is not None:
+                subject_totals[subject_id][student_id] = total
+
+    statistics = {}
+
+    for subject_id, totals_by_student in subject_totals.items():
+        if not totals_by_student:
+            statistics[subject_id] = {
+                "class_average": None,
+                "positions": {},
+            }
+            continue
+
+        class_average = round(
+            sum(totals_by_student.values()) / len(totals_by_student),
+            2,
+        )
+
+        sorted_totals = sorted(
+            totals_by_student.items(),
+            key=lambda item: item[1],
+            reverse=True,
+        )
+
+        positions = {}
+        previous_total = None
+        current_position = 0
+
+        for index, (student_id, total) in enumerate(
+            sorted_totals,
+            start=1,
+        ):
+            if previous_total is None or total != previous_total:
+                current_position = index
+
+            positions[student_id] = current_position
+            previous_total = total
+
+        statistics[subject_id] = {
+            "class_average": class_average,
+            "positions": positions,
+        }
+
+    return statistics
+
+
+def calculate_subject_statistics(student_results):
+    """Calculate averages and positions from completed subject totals.
+
+    student_results maps student IDs to result dictionaries containing
+    a "subjects" list. A subject with total=None is excluded.
+    Equal totals share a position; the next position is skipped.
+    """
+    subject_totals = {}
+
+    for student_id, student_result in student_results.items():
+        for subject in student_result["subjects"]:
+            subject_id = subject["subject_id"]
+            total = subject["total"]
+
+            subject_totals.setdefault(subject_id, {})
+
+            if total is not None:
+                subject_totals[subject_id][student_id] = total
+
+    statistics = {}
+
+    for subject_id, totals_by_student in subject_totals.items():
+        if not totals_by_student:
+            statistics[subject_id] = {
+                "class_average": None,
+                "positions": {},
+            }
+            continue
+
+        class_average = round(
+            sum(totals_by_student.values()) / len(totals_by_student),
+            2,
+        )
+
+        sorted_totals = sorted(
+            totals_by_student.items(),
+            key=lambda item: item[1],
+            reverse=True,
+        )
+
+        positions = {}
+        previous_total = None
+        current_position = 0
+
+        for index, (student_id, total) in enumerate(
+            sorted_totals,
+            start=1,
+        ):
+            if previous_total is None or total != previous_total:
+                current_position = index
+
+            positions[student_id] = current_position
+            previous_total = total
+
+        statistics[subject_id] = {
+            "class_average": class_average,
+            "positions": positions,
+        }
+
+    return statistics

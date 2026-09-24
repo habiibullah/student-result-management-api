@@ -31,6 +31,7 @@ from app.schemas.report_sheet import (
 
 from app.services.result_service import (
     calculate_class_positions,
+    calculate_subject_statistics,
     compute_student_term_result,
 )
 
@@ -263,6 +264,7 @@ def build_student_report_sheet(
     # ---------------------------------------------------------
 
     scores = []
+    scores_by_key = {}
 
     if assessment_ids and class_student_ids:
         scores = db.scalars(
@@ -323,6 +325,10 @@ def build_student_report_sheet(
     # ---------------------------------------------------------
 
     positions = calculate_class_positions(
+        all_results
+    )
+
+    subject_statistics = calculate_subject_statistics(
         all_results
     )
 
@@ -494,7 +500,23 @@ def build_student_report_sheet(
             ),
         ),
 
-        subjects=computed["subjects"],
+        subjects=[
+            {
+                **subject,
+                "subject_position": (
+                    subject_statistics
+                    .get(subject["subject_id"], {})
+                    .get("positions", {})
+                    .get(student_id)
+                ),
+                "class_average": (
+                    subject_statistics
+                    .get(subject["subject_id"], {})
+                    .get("class_average")
+                ),
+            }
+            for subject in computed["subjects"]
+        ],
 
         performance=ReportSheetPerformanceSummary(
             total_score=computed["total_score"],

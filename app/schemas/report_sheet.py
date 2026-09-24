@@ -15,6 +15,9 @@ class ReportSheetSubject(BaseModel):
     grade: str | None
     status: str
 
+    subject_position: int | None = None
+    class_average: float | None = None
+
 
 class ReportSheetAttendance(BaseModel):
     school_days: int
