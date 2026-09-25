@@ -101,6 +101,10 @@ class ReportSheetPerformanceSummary(BaseModel):
 
     class_position: int | None
 
+    class_highest_average: float | None
+    class_lowest_average: float | None
+    class_average: float | None
+
     result_status: str
     performance_remark: str | None
 

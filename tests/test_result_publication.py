@@ -1087,6 +1087,22 @@ def test_snapshot_preserves_published_report_data(
         == "COMPLETE"
     )
 
+    student_average = stored_report["performance"]["average"]
+
+    assert student_average is not None
+    assert (
+        stored_report["performance"]["class_highest_average"]
+        == student_average
+    )
+    assert (
+        stored_report["performance"]["class_lowest_average"]
+        == student_average
+    )
+    assert (
+        stored_report["performance"]["class_average"]
+        == student_average
+    )
+
     assert stored_report["behavioural_assessment"] == {
         "punctuality": 5,
         "neatness": 4,
@@ -1139,11 +1155,27 @@ def test_unpublished_report_has_no_remark_for_incomplete_subject(
 
     assert response.status_code == 200
 
-    subjects = response.json()["subjects"]
+    report_data = response.json()
+    subjects = report_data["subjects"]
+
     assert len(subjects) == 1
     assert subjects[0]["status"] == "INCOMPLETE"
     assert subjects[0]["grade"] is None
     assert subjects[0]["remark"] is None
+
+    assert (
+        report_data["performance"]["class_highest_average"]
+        is None
+    )
+    assert (
+        report_data["performance"]["class_lowest_average"]
+        is None
+    )
+    assert (
+        report_data["performance"]["class_average"]
+        is None
+    )
+
 
 def test_unpublished_report_includes_behavioural_assessment(
     client,

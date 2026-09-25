@@ -35,6 +35,7 @@ from app.schemas.report_sheet import (
 
 from app.services.result_service import (
     calculate_class_positions,
+    calculate_class_statistics,
     calculate_subject_statistics,
     compute_student_term_result,
 )
@@ -332,6 +333,10 @@ def build_student_report_sheet(
         all_results
     )
 
+    class_statistics = calculate_class_statistics(
+        all_results
+    )
+
     subject_statistics = calculate_subject_statistics(
         all_results
     )
@@ -572,6 +577,15 @@ def build_student_report_sheet(
             class_position=positions.get(
                 student.id
             ),
+            class_highest_average=class_statistics[
+                "highest_average"
+            ],
+            class_lowest_average=class_statistics[
+                "lowest_average"
+            ],
+            class_average=class_statistics[
+                "class_average"
+            ],
             result_status=computed[
                 "result_status"
             ],

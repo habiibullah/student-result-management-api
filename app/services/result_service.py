@@ -228,6 +228,35 @@ def calculate_class_positions(
     return positions
 
 
+def calculate_class_statistics(
+    student_results: dict[int, dict],
+) -> dict[str, float | None]:
+    complete_averages = [
+        result["average"]
+        for result in student_results.values()
+        if (
+            result["result_status"] == "COMPLETE"
+            and result["average"] is not None
+        )
+    ]
+
+    if not complete_averages:
+        return {
+            "highest_average": None,
+            "lowest_average": None,
+            "class_average": None,
+        }
+
+    return {
+        "highest_average": max(complete_averages),
+        "lowest_average": min(complete_averages),
+        "class_average": round(
+            sum(complete_averages) / len(complete_averages),
+            2,
+        ),
+    }
+
+
 def calculate_subject_statistics(student_results):
     """Calculate averages and positions from completed subject totals.
 
