@@ -8,6 +8,9 @@ from app.models.class_model import Class
 from app.models.enrollment import Enrollment
 from app.models.student import Student
 from app.models.student_attendance import StudentAttendance
+from app.models.student_behavioural_assessment import (
+    StudentBehaviouralAssessment,
+)
 from app.models.student_score import StudentScore
 from app.models.subject import Subject
 from app.models.term import Term
@@ -19,6 +22,7 @@ from app.models.report_settings import ReportSettings
 
 from app.schemas.report_sheet import (
     ReportSheetAttendance,
+    ReportSheetBehaviouralAssessment,
     ReportSheetClass,
     ReportSheetComments,
     ReportSheetPerformanceSummary,
@@ -380,7 +384,34 @@ def build_student_report_sheet(
         )
 
     # ---------------------------------------------------------
-    # 14. GET TEACHER / PRINCIPAL COMMENTS
+    # 14. GET BEHAVIOURAL ASSESSMENT
+    # ---------------------------------------------------------
+
+    behavioural_record = db.scalar(
+        select(StudentBehaviouralAssessment).where(
+            StudentBehaviouralAssessment.student_id
+            == student_id,
+            StudentBehaviouralAssessment.academic_session_id
+            == academic_session_id,
+            StudentBehaviouralAssessment.term_id
+            == term_id,
+        )
+    )
+
+    behavioural_summary = None
+
+    if behavioural_record is not None:
+        behavioural_summary = ReportSheetBehaviouralAssessment(
+            punctuality=behavioural_record.punctuality,
+            neatness=behavioural_record.neatness,
+            honesty=behavioural_record.honesty,
+            politeness=behavioural_record.politeness,
+            attentiveness=behavioural_record.attentiveness,
+            cooperation=behavioural_record.cooperation,
+        )
+
+    # ---------------------------------------------------------
+    # 15. GET TEACHER / PRINCIPAL COMMENTS
     # ---------------------------------------------------------
 
     comment_record = db.scalar(
@@ -405,7 +436,7 @@ def build_student_report_sheet(
         )
 
     # ---------------------------------------------------------
-    # 15. BUILD FINAL REPORT
+    # 16. BUILD FINAL REPORT
     # ---------------------------------------------------------
 
     return StudentReportSheetResponse(
@@ -551,6 +582,7 @@ def build_student_report_sheet(
 
         attendance=attendance_summary,
         comments=comment_summary,
+        behavioural_assessment=behavioural_summary,
     )
 
 

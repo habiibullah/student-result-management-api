@@ -6,6 +6,9 @@ from app.models.grading_scale import GradingScale
 from app.models.published_report_snapshot import PublishedReportSnapshot
 from app.models.result_publication import ResultPublication
 from app.models.student_score import StudentScore
+from app.models.student_behavioural_assessment import (
+    StudentBehaviouralAssessment,
+)
 
 
 def login(
@@ -1020,6 +1023,21 @@ def test_snapshot_preserves_published_report_data(
         score=8,
     )
 
+    behavioural = StudentBehaviouralAssessment(
+        student_id=school_one_student.id,
+        academic_session_id=academic_session_one.id,
+        term_id=first_term.id,
+        punctuality=5,
+        neatness=4,
+        honesty=5,
+        politeness=4,
+        attentiveness=5,
+        cooperation=4,
+    )
+
+    db.add(behavioural)
+    db.commit()
+
     token = login(
         client,
         school_admin.email,
@@ -1069,6 +1087,15 @@ def test_snapshot_preserves_published_report_data(
         == "COMPLETE"
     )
 
+    assert stored_report["behavioural_assessment"] == {
+        "punctuality": 5,
+        "neatness": 4,
+        "honesty": 5,
+        "politeness": 4,
+        "attentiveness": 5,
+        "cooperation": 4,
+    }
+
 
 def test_unpublished_report_has_no_remark_for_incomplete_subject(
     client,
@@ -1117,3 +1144,64 @@ def test_unpublished_report_has_no_remark_for_incomplete_subject(
     assert subjects[0]["status"] == "INCOMPLETE"
     assert subjects[0]["grade"] is None
     assert subjects[0]["remark"] is None
+
+def test_unpublished_report_includes_behavioural_assessment(
+    client,
+    db,
+    school_admin,
+    school_one_student,
+    school_one_class,
+    academic_session_one,
+    first_term,
+    active_term_assessment,
+):
+    create_enrollment(
+        db=db,
+        student_id=school_one_student.id,
+        class_id=school_one_class.id,
+        academic_session_id=academic_session_one.id,
+    )
+
+    behavioural = StudentBehaviouralAssessment(
+        student_id=school_one_student.id,
+        academic_session_id=academic_session_one.id,
+        term_id=first_term.id,
+        punctuality=5,
+        neatness=4,
+        honesty=5,
+        politeness=4,
+        attentiveness=5,
+        cooperation=4,
+    )
+
+    db.add(behavioural)
+    db.commit()
+
+    token = login(
+        client,
+        school_admin.email,
+    )
+
+    response = client.get(
+        f"/api/report-sheets/student/{school_one_student.id}",
+        headers=auth_headers(token),
+        params={
+            "academic_session_id": academic_session_one.id,
+            "term_id": first_term.id,
+        },
+    )
+
+    assert response.status_code == 200
+
+    behavioural_data = response.json()[
+        "behavioural_assessment"
+    ]
+
+    assert behavioural_data == {
+        "punctuality": 5,
+        "neatness": 4,
+        "honesty": 5,
+        "politeness": 4,
+        "attentiveness": 5,
+        "cooperation": 4,
+    }

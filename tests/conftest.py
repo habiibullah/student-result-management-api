@@ -66,6 +66,7 @@ def clean_test_data():
             text(
                 """
                 TRUNCATE TABLE
+                    student_behavioural_assessments,
                     payment_transactions,
                     published_report_snapshots,
                     result_publications,

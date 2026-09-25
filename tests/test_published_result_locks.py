@@ -1,6 +1,9 @@
 from app.models.enrollment import Enrollment
 from app.models.result_publication import ResultPublication
 from app.models.student_attendance import StudentAttendance
+from app.models.student_behavioural_assessment import (
+    StudentBehaviouralAssessment,
+)
 from app.models.student_score import StudentScore
 from app.models.term_report_comment import TermReportComment
 
@@ -122,6 +125,29 @@ def create_attendance(
 
     return attendance
 
+def create_behavioural_assessment(
+    db,
+    student_id,
+    academic_session_id,
+    term_id,
+):
+    behavioural = StudentBehaviouralAssessment(
+        student_id=student_id,
+        academic_session_id=academic_session_id,
+        term_id=term_id,
+        punctuality=5,
+        neatness=4,
+        honesty=5,
+        politeness=4,
+        attentiveness=5,
+        cooperation=4,
+    )
+
+    db.add(behavioural)
+    db.commit()
+    db.refresh(behavioural)
+
+    return behavioural
 
 def create_comment(
     db,
@@ -436,6 +462,156 @@ def test_published_result_blocks_attendance_delete(
 
     assert_result_locked(response)
 
+
+# ============================================================
+# BEHAVIOURAL ASSESSMENT LOCKS
+# ============================================================
+
+
+def test_published_result_blocks_behavioural_create(
+    client,
+    db,
+    school_admin,
+    school_one_student,
+    school_one_class,
+    academic_session_one,
+    first_term,
+    active_subscription,
+):
+    create_enrollment(
+        db=db,
+        student_id=school_one_student.id,
+        class_id=school_one_class.id,
+        academic_session_id=academic_session_one.id,
+    )
+
+    create_publication(
+        db=db,
+        class_id=school_one_class.id,
+        academic_session_id=academic_session_one.id,
+        term_id=first_term.id,
+        published_by_user_id=school_admin.id,
+    )
+
+    token = login(
+        client,
+        school_admin.email,
+    )
+
+    response = client.post(
+        "/api/student-behavioural-assessments",
+        headers=auth_headers(token),
+        json={
+            "student_id": school_one_student.id,
+            "academic_session_id": academic_session_one.id,
+            "term_id": first_term.id,
+            "punctuality": 5,
+            "neatness": 4,
+            "honesty": 5,
+            "politeness": 4,
+            "attentiveness": 5,
+            "cooperation": 4,
+        },
+    )
+
+    assert_result_locked(response)
+
+def test_published_result_blocks_behavioural_update(
+    client,
+    db,
+    school_admin,
+    school_one_student,
+    school_one_class,
+    academic_session_one,
+    first_term,
+    active_subscription,
+):
+    create_enrollment(
+        db=db,
+        student_id=school_one_student.id,
+        class_id=school_one_class.id,
+        academic_session_id=academic_session_one.id,
+    )
+
+    behavioural = create_behavioural_assessment(
+        db=db,
+        student_id=school_one_student.id,
+        academic_session_id=academic_session_one.id,
+        term_id=first_term.id,
+    )
+
+    create_publication(
+        db=db,
+        class_id=school_one_class.id,
+        academic_session_id=academic_session_one.id,
+        term_id=first_term.id,
+        published_by_user_id=school_admin.id,
+    )
+
+    token = login(
+        client,
+        school_admin.email,
+    )
+
+    response = client.patch(
+        f"/api/student-behavioural-assessments/{behavioural.id}",
+        headers=auth_headers(token),
+        json={
+            "punctuality": 3,
+            "neatness": 3,
+            "honesty": 3,
+            "politeness": 3,
+            "attentiveness": 3,
+            "cooperation": 3,
+        },
+    )
+
+    assert_result_locked(response)
+
+
+def test_published_result_blocks_behavioural_delete(
+    client,
+    db,
+    school_admin,
+    school_one_student,
+    school_one_class,
+    academic_session_one,
+    first_term,
+    active_subscription,
+):
+    create_enrollment(
+        db=db,
+        student_id=school_one_student.id,
+        class_id=school_one_class.id,
+        academic_session_id=academic_session_one.id,
+    )
+
+    behavioural = create_behavioural_assessment(
+        db=db,
+        student_id=school_one_student.id,
+        academic_session_id=academic_session_one.id,
+        term_id=first_term.id,
+    )
+
+    create_publication(
+        db=db,
+        class_id=school_one_class.id,
+        academic_session_id=academic_session_one.id,
+        term_id=first_term.id,
+        published_by_user_id=school_admin.id,
+    )
+
+    token = login(
+        client,
+        school_admin.email,
+    )
+
+    response = client.delete(
+        f"/api/student-behavioural-assessments/{behavioural.id}",
+        headers=auth_headers(token),
+    )
+
+    assert_result_locked(response)
 
 # ============================================================
 # TERM REPORT COMMENT LOCKS

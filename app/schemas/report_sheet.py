@@ -32,6 +32,15 @@ class ReportSheetComments(BaseModel):
     principal_comment: str | None
 
 
+class ReportSheetBehaviouralAssessment(BaseModel):
+    punctuality: int | None = None
+    neatness: int | None = None
+    honesty: int | None = None
+    politeness: int | None = None
+    attentiveness: int | None = None
+    cooperation: int | None = None
+
+
 class ReportSheetSchool(BaseModel):
     school_id: int
     school_name: str
@@ -110,3 +119,4 @@ class StudentReportSheetResponse(BaseModel):
 
     attendance: ReportSheetAttendance | None
     comments: ReportSheetComments | None
+    behavioural_assessment: ReportSheetBehaviouralAssessment | None = None

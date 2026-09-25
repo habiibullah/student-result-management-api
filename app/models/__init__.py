@@ -19,7 +19,7 @@ from app.models.published_report_snapshot import PublishedReportSnapshot
 from app.models.grading_scale import GradingScale
 from app.models.report_settings import ReportSettings
 from app.models.payment_transaction import PaymentTransaction
-
+from app.models.student_behavioural_assessment import StudentBehaviouralAssessment
 
 
 __all__ = [
@@ -44,4 +44,5 @@ __all__ = [
     "GradingScale",
     "ReportSettings",
     "PaymentTransaction",
+    "StudentBehaviouralAssessment",
 ]
