@@ -17,6 +17,7 @@ from app.models.term import Term
 from app.models.term_report_comment import TermReportComment
 from app.models.school import School
 from app.models.grading_scale import GradingScale
+from app.models.performance_comment_band import PerformanceCommentBand
 from app.models.report_settings import ReportSettings
 
 
@@ -428,16 +429,77 @@ def build_student_report_sheet(
         )
     )
 
-    comment_summary = None
+    manual_teacher_comment = None
+    manual_principal_comment = None
 
     if comment_record is not None:
+        if (
+            comment_record.teacher_comment
+            and comment_record.teacher_comment.strip()
+        ):
+            manual_teacher_comment = (
+                comment_record.teacher_comment.strip()
+            )
+
+        if (
+            comment_record.principal_comment
+            and comment_record.principal_comment.strip()
+        ):
+            manual_principal_comment = (
+                comment_record.principal_comment.strip()
+            )
+
+    automatic_teacher_comment = None
+    automatic_principal_comment = None
+
+    if (
+        computed["result_status"] == "COMPLETE"
+        and computed["average"] is not None
+    ):
+        performance_band = db.scalar(
+            select(PerformanceCommentBand)
+            .where(
+                PerformanceCommentBand.school_id
+                == school_id,
+                PerformanceCommentBand.minimum_average
+                <= computed["average"],
+                PerformanceCommentBand.maximum_average
+                >= computed["average"],
+            )
+            .order_by(
+                PerformanceCommentBand.minimum_average.desc()
+            )
+        )
+
+        if performance_band is not None:
+            automatic_teacher_comment = (
+                performance_band.teacher_comment
+            )
+            automatic_principal_comment = (
+                performance_band.principal_comment
+            )
+
+    final_teacher_comment = (
+        manual_teacher_comment
+        if manual_teacher_comment is not None
+        else automatic_teacher_comment
+    )
+
+    final_principal_comment = (
+        manual_principal_comment
+        if manual_principal_comment is not None
+        else automatic_principal_comment
+    )
+
+    comment_summary = None
+
+    if (
+        final_teacher_comment is not None
+        or final_principal_comment is not None
+    ):
         comment_summary = ReportSheetComments(
-            teacher_comment=(
-                comment_record.teacher_comment
-            ),
-            principal_comment=(
-                comment_record.principal_comment
-            ),
+            teacher_comment=final_teacher_comment,
+            principal_comment=final_principal_comment,
         )
 
     # ---------------------------------------------------------

@@ -18,6 +18,7 @@ from app.models.result_publication import ResultPublication
 from app.models.published_report_snapshot import PublishedReportSnapshot
 from app.models.grading_scale import GradingScale
 from app.models.report_settings import ReportSettings
+from app.models.performance_comment_band import PerformanceCommentBand
 from app.models.payment_transaction import PaymentTransaction
 from app.models.student_behavioural_assessment import StudentBehaviouralAssessment
 
@@ -45,4 +46,5 @@ __all__ = [
     "ReportSettings",
     "PaymentTransaction",
     "StudentBehaviouralAssessment",
+    "PerformanceCommentBand",
 ]

@@ -80,6 +80,7 @@ def clean_test_data():
                     teachers,
                     subscriptions,
                     subscription_plans,
+                    performance_comment_bands,
                     grading_scales,
                     report_settings,
                     terms,

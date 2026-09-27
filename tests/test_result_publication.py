@@ -9,7 +9,7 @@ from app.models.student_score import StudentScore
 from app.models.student_behavioural_assessment import (
     StudentBehaviouralAssessment,
 )
-
+from app.models.performance_comment_band import PerformanceCommentBand
 
 def login(
     client,
@@ -1237,3 +1237,105 @@ def test_unpublished_report_includes_behavioural_assessment(
         "attentiveness": 5,
         "cooperation": 4,
     }
+
+def test_published_snapshot_preserves_automatic_performance_comments(
+    client,
+    db,
+    school_admin,
+    school_one,
+    school_one_student,
+    school_one_class,
+    academic_session_one,
+    first_term,
+    active_term_assessment,
+    active_subscription,
+):
+    prepare_complete_result(
+        db=db,
+        student=school_one_student,
+        class_record=school_one_class,
+        academic_session=academic_session_one,
+        assessment=active_term_assessment,
+        score=8,
+    )
+
+    performance_band = PerformanceCommentBand(
+        school_id=school_one.id,
+        minimum_average=0,
+        maximum_average=100,
+        teacher_comment="Original automatic teacher comment.",
+        principal_comment="Original automatic principal comment.",
+    )
+
+    db.add(performance_band)
+    db.commit()
+    db.refresh(performance_band)
+
+    token = login(
+        client,
+        school_admin.email,
+    )
+
+    publish_response = client.post(
+        "/api/result-publications",
+        headers=auth_headers(token),
+        json=publication_payload(
+            class_id=school_one_class.id,
+            academic_session_id=academic_session_one.id,
+            term_id=first_term.id,
+        ),
+    )
+
+    assert publish_response.status_code == 201
+
+    publication_id = publish_response.json()["id"]
+
+    snapshot = db.query(
+        PublishedReportSnapshot
+    ).filter(
+        PublishedReportSnapshot.publication_id
+        == publication_id,
+        PublishedReportSnapshot.student_id
+        == school_one_student.id,
+    ).one()
+
+    assert snapshot.report_data["comments"] is not None
+    assert snapshot.report_data["comments"]["teacher_comment"] == (
+        "Original automatic teacher comment."
+    )
+    assert snapshot.report_data["comments"]["principal_comment"] == (
+        "Original automatic principal comment."
+    )
+
+    performance_band.teacher_comment = (
+        "Changed automatic teacher comment."
+    )
+    performance_band.principal_comment = (
+        "Changed automatic principal comment."
+    )
+
+    db.commit()
+
+    report_response = client.get(
+        (
+            "/api/report-sheets/student/"
+            f"{school_one_student.id}"
+        ),
+        headers=auth_headers(token),
+        params={
+            "academic_session_id": academic_session_one.id,
+            "term_id": first_term.id,
+        },
+    )
+
+    assert report_response.status_code == 200
+
+    report_data = report_response.json()
+
+    assert report_data["comments"] is not None
+    assert report_data["comments"]["teacher_comment"] == (
+        "Original automatic teacher comment."
+    )
+    assert report_data["comments"]["principal_comment"] == (
+        "Original automatic principal comment."
+    )

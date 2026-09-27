@@ -46,6 +46,9 @@ from app.api.report_settings import router as report_settings_router
 from app.api.admin_management import (
     router as admin_management_router,
 )
+from app.api.performance_comment_bands import (
+    router as performance_comment_bands_router,
+)
 from app.api.student_behavioural_assessments import (
     router as student_behavioural_assessments_router,
 )
@@ -139,6 +142,7 @@ app.include_router(result_publications_router)
 
 app.include_router(grading_scales_router)
 app.include_router(report_settings_router)
+app.include_router(performance_comment_bands_router)
 
 # ---------------------------------------------------------
 # HEALTH ENDPOINTS
