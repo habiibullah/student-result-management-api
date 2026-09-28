@@ -74,6 +74,7 @@ def clean_test_data():
                     student_attendance,
                     student_scores,
                     assessments,
+                    class_subjects,
                     teaching_assignments,
                     enrollments,
                     students,

@@ -14,6 +14,7 @@ from app.api.teachers import router as teachers_router
 from app.api.teaching_assignments import (
     router as teaching_assignments_router,
 )
+from app.api.class_subjects import router as class_subjects_router
 from app.api.classes import router as classes_router
 from app.api.academic_sessions import (
     router as academic_sessions_router,
@@ -113,6 +114,7 @@ app.include_router(roles_router)
 app.include_router(subjects_router)
 app.include_router(teachers_router)
 app.include_router(teaching_assignments_router)
+app.include_router(class_subjects_router)
 
 app.include_router(classes_router)
 app.include_router(academic_sessions_router)

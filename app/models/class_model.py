@@ -67,3 +67,8 @@ class Class(Base):
         back_populates="class_",
         cascade="all, delete-orphan",
     )
+
+    class_subjects: Mapped[list["ClassSubject"]] = relationship(
+        back_populates="class_",
+        cascade="all, delete-orphan",
+    )

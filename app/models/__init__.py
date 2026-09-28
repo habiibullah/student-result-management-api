@@ -21,6 +21,7 @@ from app.models.report_settings import ReportSettings
 from app.models.performance_comment_band import PerformanceCommentBand
 from app.models.payment_transaction import PaymentTransaction
 from app.models.student_behavioural_assessment import StudentBehaviouralAssessment
+from app.models.class_subject import ClassSubject
 
 
 __all__ = [
@@ -47,4 +48,5 @@ __all__ = [
     "PaymentTransaction",
     "StudentBehaviouralAssessment",
     "PerformanceCommentBand",
+    "ClassSubject",
 ]
