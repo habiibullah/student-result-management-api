@@ -132,10 +132,12 @@ def create_enrollment(
     response_model=list[EnrollmentResponse],
 )
 def get_enrollments(
+    class_id: int | None = None,
+    academic_session_id: int | None = None,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_school_admin),
 ):
-    enrollments = db.scalars(
+    query = (
         select(Enrollment)
         .join(
             Student,
@@ -155,7 +157,21 @@ def get_enrollments(
             Class.school_id == current_user.school_id,
             AcademicSession.school_id == current_user.school_id,
         )
-        .order_by(Enrollment.id)
+    )
+
+    if class_id is not None:
+        query = query.where(
+            Enrollment.class_id == class_id,
+        )
+
+    if academic_session_id is not None:
+        query = query.where(
+            Enrollment.academic_session_id
+            == academic_session_id,
+        )
+
+    enrollments = db.scalars(
+        query.order_by(Enrollment.id)
     ).all()
 
     return enrollments

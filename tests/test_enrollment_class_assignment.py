@@ -365,3 +365,246 @@ def test_database_rejects_two_classes_for_student_in_same_session(
         db.commit()
 
     db.rollback()
+
+
+def test_get_enrollments_can_filter_by_class(
+    client,
+    db,
+    school_admin,
+    school_one,
+    school_one_student,
+    school_one_class,
+    academic_session_one,
+):
+    second_class = Class(
+        school_id=school_one.id,
+        name="Junior Secondary Two",
+        code="JSS2-FILTER",
+        description="Second class for enrollment filtering",
+    )
+    second_session = AcademicSession(
+        school_id=school_one.id,
+        name="2028/2029",
+        is_current=False,
+    )
+    db.add_all([second_class, second_session])
+    db.commit()
+    db.refresh(second_class)
+    db.refresh(second_session)
+
+    wanted = Enrollment(
+        student_id=school_one_student.id,
+        class_id=school_one_class.id,
+        academic_session_id=academic_session_one.id,
+    )
+    unwanted = Enrollment(
+        student_id=school_one_student.id,
+        class_id=second_class.id,
+        academic_session_id=second_session.id,
+    )
+    db.add_all([wanted, unwanted])
+    db.commit()
+    db.refresh(wanted)
+    db.refresh(unwanted)
+
+    token = login(client, school_admin.email)
+
+    response = client.get(
+        "/api/enrollments",
+        headers=auth_headers(token),
+        params={"class_id": school_one_class.id},
+    )
+
+    assert response.status_code == 200
+
+    enrollments = response.json()
+    enrollment_ids = {item["id"] for item in enrollments}
+
+    assert wanted.id in enrollment_ids
+    assert unwanted.id not in enrollment_ids
+    assert all(
+        item["class_id"] == school_one_class.id
+        for item in enrollments
+    )
+
+
+def test_get_enrollments_can_filter_by_academic_session(
+    client,
+    db,
+    school_admin,
+    school_one,
+    school_one_student,
+    school_one_class,
+    academic_session_one,
+):
+    second_class = Class(
+        school_id=school_one.id,
+        name="Junior Secondary Two",
+        code="JSS2-SESSION-FILTER",
+        description="Second class for session filtering",
+    )
+    next_session = AcademicSession(
+        school_id=school_one.id,
+        name="2028/2029",
+        is_current=False,
+    )
+    db.add_all([second_class, next_session])
+    db.commit()
+    db.refresh(second_class)
+    db.refresh(next_session)
+
+    wanted = Enrollment(
+        student_id=school_one_student.id,
+        class_id=school_one_class.id,
+        academic_session_id=academic_session_one.id,
+    )
+    unwanted = Enrollment(
+        student_id=school_one_student.id,
+        class_id=second_class.id,
+        academic_session_id=next_session.id,
+    )
+    db.add_all([wanted, unwanted])
+    db.commit()
+    db.refresh(wanted)
+    db.refresh(unwanted)
+
+    token = login(client, school_admin.email)
+
+    response = client.get(
+        "/api/enrollments",
+        headers=auth_headers(token),
+        params={"academic_session_id": academic_session_one.id},
+    )
+
+    assert response.status_code == 200
+
+    enrollments = response.json()
+    enrollment_ids = {item["id"] for item in enrollments}
+
+    assert wanted.id in enrollment_ids
+    assert unwanted.id not in enrollment_ids
+    assert all(
+        item["academic_session_id"] == academic_session_one.id
+        for item in enrollments
+    )
+
+
+def test_get_enrollments_can_filter_by_class_and_academic_session(
+    client,
+    db,
+    school_admin,
+    school_one,
+    school_one_student,
+    school_one_class,
+    academic_session_one,
+):
+    second_class = Class(
+        school_id=school_one.id,
+        name="Junior Secondary Two",
+        code="JSS2-COMBINED-FILTER",
+        description="Second class for combined filtering",
+    )
+    next_session = AcademicSession(
+        school_id=school_one.id,
+        name="2028/2029",
+        is_current=False,
+    )
+    db.add_all([second_class, next_session])
+    db.commit()
+    db.refresh(second_class)
+    db.refresh(next_session)
+
+    wanted = Enrollment(
+        student_id=school_one_student.id,
+        class_id=school_one_class.id,
+        academic_session_id=academic_session_one.id,
+    )
+    wrong_class = Enrollment(
+        student_id=school_one_student.id,
+        class_id=second_class.id,
+        academic_session_id=next_session.id,
+    )
+    db.add_all([wanted, wrong_class])
+    db.commit()
+    db.refresh(wanted)
+    db.refresh(wrong_class)
+
+    token = login(client, school_admin.email)
+
+    response = client.get(
+        "/api/enrollments",
+        headers=auth_headers(token),
+        params={
+            "class_id": school_one_class.id,
+            "academic_session_id": academic_session_one.id,
+        },
+    )
+
+    assert response.status_code == 200
+
+    enrollments = response.json()
+
+    assert [item["id"] for item in enrollments] == [wanted.id]
+    assert enrollments[0]["class_id"] == school_one_class.id
+    assert (
+        enrollments[0]["academic_session_id"]
+        == academic_session_one.id
+    )
+
+
+def test_get_enrollments_without_filters_returns_all_school_enrollments(
+    client,
+    db,
+    school_admin,
+    school_one,
+    school_one_student,
+    school_one_class,
+    academic_session_one,
+):
+    second_class = Class(
+        school_id=school_one.id,
+        name="Junior Secondary Two",
+        code="JSS2-NO-FILTER",
+        description="Second class for unfiltered enrollment testing",
+    )
+    next_session = AcademicSession(
+        school_id=school_one.id,
+        name="2028/2029",
+        is_current=False,
+    )
+    db.add_all([second_class, next_session])
+    db.commit()
+    db.refresh(second_class)
+    db.refresh(next_session)
+
+    first_enrollment = Enrollment(
+        student_id=school_one_student.id,
+        class_id=school_one_class.id,
+        academic_session_id=academic_session_one.id,
+    )
+    second_enrollment = Enrollment(
+        student_id=school_one_student.id,
+        class_id=second_class.id,
+        academic_session_id=next_session.id,
+    )
+    db.add_all([first_enrollment, second_enrollment])
+    db.commit()
+    db.refresh(first_enrollment)
+    db.refresh(second_enrollment)
+
+    token = login(client, school_admin.email)
+
+    response = client.get(
+        "/api/enrollments",
+        headers=auth_headers(token),
+    )
+
+    assert response.status_code == 200
+
+    enrollment_ids = {
+        item["id"]
+        for item in response.json()
+    }
+
+    assert first_enrollment.id in enrollment_ids
+    assert second_enrollment.id in enrollment_ids
