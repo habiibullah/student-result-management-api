@@ -11,6 +11,7 @@ from app.models.class_model import Class
 from app.models.subject import Subject
 from app.models.term import Term
 from app.models.teacher import Teacher
+from app.models.class_subject import ClassSubject
 from app.models.teaching_assignment import TeachingAssignment
 from app.models.user import User
 from app.schemas.assessment import (
@@ -84,6 +85,25 @@ def create_assessment(
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Academic session not found",
+        )
+    # The subject must be offered by this class for the selected
+    # academic session.
+    class_subject = db.scalar(
+        select(ClassSubject).where(
+            ClassSubject.class_id == assessment_data.class_id,
+            ClassSubject.subject_id == assessment_data.subject_id,
+            ClassSubject.academic_session_id
+            == assessment_data.academic_session_id,
+        )
+    )
+
+    if class_subject is None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=(
+                "Subject is not assigned to this class "
+                "for the selected academic session"
+            ),
         )
 
     # Validate term through its school-owned academic session.

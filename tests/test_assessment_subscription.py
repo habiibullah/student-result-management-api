@@ -1,3 +1,6 @@
+from app.models.class_subject import ClassSubject
+
+
 def login(
     client,
     email,
@@ -51,6 +54,25 @@ def assert_subscription_required(response):
     )
 
 
+def assign_subject_to_class(
+    db,
+    class_id,
+    subject_id,
+    academic_session_id,
+):
+    assignment = ClassSubject(
+        class_id=class_id,
+        subject_id=subject_id,
+        academic_session_id=academic_session_id,
+    )
+
+    db.add(assignment)
+    db.commit()
+    db.refresh(assignment)
+
+    return assignment
+
+
 # ============================================================
 # CREATE
 # ============================================================
@@ -58,6 +80,7 @@ def assert_subscription_required(response):
 
 def test_active_subscription_allows_assessment_creation(
     client,
+    db,
     school_admin,
     school_one_class,
     school_one_subject,
@@ -65,6 +88,12 @@ def test_active_subscription_allows_assessment_creation(
     first_term,
     active_subscription,
 ):
+    assign_subject_to_class(
+        db=db,
+        class_id=school_one_class.id,
+        subject_id=school_one_subject.id,
+        academic_session_id=academic_session_one.id,
+    )
     token = login(
         client,
         school_admin.email,
@@ -98,6 +127,7 @@ def test_active_subscription_allows_assessment_creation(
 
 def test_pending_subscription_blocks_assessment_creation(
     client,
+    db,
     school_admin,
     school_one_class,
     school_one_subject,
@@ -105,6 +135,12 @@ def test_pending_subscription_blocks_assessment_creation(
     second_term,
     pending_subscription,
 ):
+    assign_subject_to_class(
+        db=db,
+        class_id=school_one_class.id,
+        subject_id=school_one_subject.id,
+        academic_session_id=academic_session_one.id,
+    )
     token = login(
         client,
         school_admin.email,
@@ -186,6 +222,7 @@ def test_assessment_schema_rejects_invalid_sequences_and_scores():
 
 def test_cancelled_subscription_blocks_assessment_creation(
     client,
+    db,
     school_admin,
     school_one_class,
     school_one_subject,
@@ -193,6 +230,12 @@ def test_cancelled_subscription_blocks_assessment_creation(
     third_term,
     cancelled_subscription,
 ):
+    assign_subject_to_class(
+        db=db,
+        class_id=school_one_class.id,
+        subject_id=school_one_subject.id,
+        academic_session_id=academic_session_one.id,
+    )
     token = login(
         client,
         school_admin.email,
@@ -214,6 +257,7 @@ def test_cancelled_subscription_blocks_assessment_creation(
 
 def test_expired_subscription_blocks_assessment_creation(
     client,
+    db,
     school_admin,
     school_one_class,
     school_one_subject,
@@ -221,6 +265,12 @@ def test_expired_subscription_blocks_assessment_creation(
     test_extra_term,
     expired_subscription,
 ):
+    assign_subject_to_class(
+        db=db,
+        class_id=school_one_class.id,
+        subject_id=school_one_subject.id,
+        academic_session_id=academic_session_one.id,
+    )
     token = login(
         client,
         school_admin.email,
@@ -242,12 +292,19 @@ def test_expired_subscription_blocks_assessment_creation(
 
 def test_missing_subscription_blocks_assessment_creation(
     client,
+    db,
     school_admin,
     school_one_class,
     school_one_subject,
     academic_session_one,
     unsubscribed_term,
 ):
+    assign_subject_to_class(
+        db=db,
+        class_id=school_one_class.id,
+        subject_id=school_one_subject.id,
+        academic_session_id=academic_session_one.id,
+    )
     token = login(
         client,
         school_admin.email,
