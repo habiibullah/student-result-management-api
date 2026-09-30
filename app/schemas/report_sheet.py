@@ -108,6 +108,18 @@ class ReportSheetPerformanceSummary(BaseModel):
     result_status: str
     performance_remark: str | None
 
+class ClassReportSummaryItem(BaseModel):
+    student_id: int
+    admission_number: str
+    student_name: str
+
+    result_status: str
+    number_of_subjects: int
+    completed_subjects: int
+
+    average: float | None
+    overall_grade: str | None
+
 
 class StudentReportSheetResponse(BaseModel):
     school_info: ReportSheetSchool
