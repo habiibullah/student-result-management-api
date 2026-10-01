@@ -15,6 +15,7 @@ from app.models.student_score import StudentScore
 from app.models.subject import Subject
 from app.models.user import User
 from app.schemas.student_score import (
+    StudentScoreBulkCreate,
     StudentScoreCreate,
     StudentScoreResponse,
     StudentScoreUpdate,
@@ -123,6 +124,183 @@ def get_assessment_students(
         .order_by(Student.last_name, Student.first_name, Student.id)
     ).all()
 
+
+@router.post(
+    "/bulk",
+    response_model=list[StudentScoreResponse],
+    status_code=status.HTTP_200_OK,
+)
+def bulk_save_student_scores(
+    bulk_data: StudentScoreBulkCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_score_manager),
+):
+    assessment = db.scalar(
+        select(Assessment)
+        .join(
+            Class,
+            Assessment.class_id == Class.id,
+        )
+        .join(
+            Subject,
+            Assessment.subject_id == Subject.id,
+        )
+        .join(
+            AcademicSession,
+            Assessment.academic_session_id
+            == AcademicSession.id,
+        )
+        .where(
+            Assessment.id == bulk_data.assessment_id,
+            Class.school_id == current_user.school_id,
+            Subject.school_id == current_user.school_id,
+            AcademicSession.school_id == current_user.school_id,
+        )
+    )
+
+    if assessment is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Assessment not found",
+        )
+
+    require_assessment_assignment(
+        db=db,
+        current_user=current_user,
+        assessment=assessment,
+    )
+
+    require_active_term_subscription(
+        db=db,
+        school_id=current_user.school_id,
+        academic_session_id=assessment.academic_session_id,
+        term_id=assessment.term_id,
+    )
+
+    require_result_unpublished(
+        db=db,
+        class_id=assessment.class_id,
+        academic_session_id=assessment.academic_session_id,
+        term_id=assessment.term_id,
+    )
+
+    student_ids = [
+        item.student_id
+        for item in bulk_data.scores
+    ]
+
+    if len(student_ids) != len(set(student_ids)):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Duplicate student IDs are not allowed",
+        )
+
+    for item in bulk_data.scores:
+        if item.score > assessment.max_score:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=(
+                    f"Score cannot exceed maximum score "
+                    f"of {assessment.max_score}"
+                ),
+            )
+
+    students = db.scalars(
+        select(Student).where(
+            Student.id.in_(student_ids),
+            Student.school_id == current_user.school_id,
+        )
+    ).all()
+
+    students_by_id = {
+        student.id: student
+        for student in students
+    }
+
+    missing_student_ids = [
+        student_id
+        for student_id in student_ids
+        if student_id not in students_by_id
+    ]
+
+    if missing_student_ids:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Student not found",
+        )
+
+    enrolled_student_ids = set(
+        db.scalars(
+            select(Enrollment.student_id).where(
+                Enrollment.student_id.in_(student_ids),
+                Enrollment.class_id == assessment.class_id,
+                Enrollment.academic_session_id
+                == assessment.academic_session_id,
+            )
+        ).all()
+    )
+
+    non_enrolled_student_ids = [
+        student_id
+        for student_id in student_ids
+        if student_id not in enrolled_student_ids
+    ]
+
+    if non_enrolled_student_ids:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=(
+                "One or more students are not enrolled "
+                "in this assessment's class and session"
+            ),
+        )
+
+    existing_scores = db.scalars(
+        select(StudentScore).where(
+            StudentScore.assessment_id == assessment.id,
+            StudentScore.student_id.in_(student_ids),
+        )
+    ).all()
+
+    existing_by_student_id = {
+        score.student_id: score
+        for score in existing_scores
+    }
+
+    saved_scores = []
+
+    for item in bulk_data.scores:
+        existing_score = existing_by_student_id.get(
+            item.student_id
+        )
+
+        if existing_score is not None:
+            existing_score.score = item.score
+            saved_scores.append(existing_score)
+            continue
+
+        new_score = StudentScore(
+            student_id=item.student_id,
+            assessment_id=assessment.id,
+            score=item.score,
+        )
+
+        db.add(new_score)
+        saved_scores.append(new_score)
+
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Unable to save student scores",
+        )
+
+    for saved_score in saved_scores:
+        db.refresh(saved_score)
+
+    return saved_scores
 
 @router.post(
     "",

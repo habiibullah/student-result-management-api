@@ -13,6 +13,16 @@ class StudentScoreUpdate(BaseModel):
     score: float = Field(ge=0)
 
 
+class StudentScoreBulkItem(BaseModel):
+    student_id: int = Field(gt=0)
+    score: float = Field(ge=0)
+
+
+class StudentScoreBulkCreate(BaseModel):
+    assessment_id: int = Field(gt=0)
+    scores: list[StudentScoreBulkItem] = Field(min_length=1)
+
+
 class StudentScoreResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
