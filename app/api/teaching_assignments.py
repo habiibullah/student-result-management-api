@@ -3,7 +3,7 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app.core.dependencies import require_school_admin
+from app.core.dependencies import require_school_admin, require_teacher
 from app.database.connection import get_db
 from app.models import (
     AcademicSession,
@@ -169,6 +169,44 @@ def get_teaching_assignments(
 
     return assignments
 
+@router.get(
+    "/me",
+    response_model=list[TeachingAssignmentResponse],
+)
+def get_my_teaching_assignments(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_teacher),
+):
+    assignments = db.scalars(
+        select(TeachingAssignment)
+        .join(
+            Teacher,
+            TeachingAssignment.teacher_id == Teacher.id,
+        )
+        .join(
+            Subject,
+            TeachingAssignment.subject_id == Subject.id,
+        )
+        .join(
+            Class,
+            TeachingAssignment.class_id == Class.id,
+        )
+        .join(
+            AcademicSession,
+            TeachingAssignment.academic_session_id
+            == AcademicSession.id,
+        )
+        .where(
+            Teacher.user_id == current_user.id,
+            Teacher.school_id == current_user.school_id,
+            Subject.school_id == current_user.school_id,
+            Class.school_id == current_user.school_id,
+            AcademicSession.school_id == current_user.school_id,
+        )
+        .order_by(TeachingAssignment.id)
+    ).all()
+
+    return assignments
 
 @router.get(
     "/{assignment_id}",
