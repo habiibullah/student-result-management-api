@@ -1,6 +1,6 @@
 from datetime import date
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class ReportSheetSubject(BaseModel):
@@ -39,6 +39,13 @@ class ReportSheetBehaviouralAssessment(BaseModel):
     politeness: int | None = None
     attentiveness: int | None = None
     cooperation: int | None = None
+
+
+class ReportSheetGradingScale(BaseModel):
+    grade: str
+    minimum_score: float
+    maximum_score: float
+    remark: str | None = None
 
 
 class ReportSheetSchool(BaseModel):
@@ -130,6 +137,7 @@ class StudentReportSheetResponse(BaseModel):
     term_info: ReportSheetTerm
 
     subjects: list[ReportSheetSubject]
+    grading_scales: list[ReportSheetGradingScale] = Field(default_factory=list)
 
     performance: ReportSheetPerformanceSummary
 

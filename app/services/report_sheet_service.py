@@ -32,6 +32,7 @@ from app.schemas.report_sheet import (
     StudentReportSheetResponse,
     ReportSheetSchool,
     ReportSheetSettings,
+    ReportSheetGradingScale,
 )
 
 from app.services.result_service import (
@@ -622,6 +623,16 @@ def build_student_report_sheet(
                 ) if subject["status"] == "COMPLETE" else None,
             }
             for subject in computed["subjects"]
+        ],
+
+        grading_scales=[
+            ReportSheetGradingScale(
+                grade=scale.grade,
+                minimum_score=float(scale.minimum_score),
+                maximum_score=float(scale.maximum_score),
+                remark=scale.remark,
+            )
+            for scale in grading_scales
         ],
 
         performance=ReportSheetPerformanceSummary(
