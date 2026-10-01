@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, ConfigDict
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -15,6 +15,7 @@ from app.models.student_score import StudentScore
 from app.models.subject import Subject
 from app.models.user import User
 from app.schemas.student_score import (
+    AssessmentScoreProgressResponse,
     StudentScoreBulkCreate,
     StudentScoreCreate,
     StudentScoreResponse,
@@ -124,6 +125,91 @@ def get_assessment_students(
         .order_by(Student.last_name, Student.first_name, Student.id)
     ).all()
 
+
+@router.get(
+    "/assessments/{assessment_id}/progress",
+    response_model=AssessmentScoreProgressResponse,
+)
+def get_assessment_score_progress(
+    assessment_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_score_manager),
+):
+    assessment = db.scalar(
+        select(Assessment)
+        .join(Class, Assessment.class_id == Class.id)
+        .join(Subject, Assessment.subject_id == Subject.id)
+        .join(
+            AcademicSession,
+            Assessment.academic_session_id == AcademicSession.id,
+        )
+        .where(
+            Assessment.id == assessment_id,
+            Class.school_id == current_user.school_id,
+            Subject.school_id == current_user.school_id,
+            AcademicSession.school_id == current_user.school_id,
+        )
+    )
+
+    if assessment is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Assessment not found",
+        )
+
+    require_assessment_assignment(
+        db=db,
+        current_user=current_user,
+        assessment=assessment,
+    )
+
+    total_students = db.scalar(
+        select(func.count(Enrollment.id))
+        .join(
+            Student,
+            Enrollment.student_id == Student.id,
+        )
+        .where(
+            Student.school_id == current_user.school_id,
+            Enrollment.class_id == assessment.class_id,
+            Enrollment.academic_session_id
+            == assessment.academic_session_id,
+        )
+    ) or 0
+
+    scores_entered = db.scalar(
+        select(func.count(StudentScore.id))
+        .join(
+            Student,
+            StudentScore.student_id == Student.id,
+        )
+        .join(
+            Enrollment,
+            (Enrollment.student_id == StudentScore.student_id)
+            & (Enrollment.class_id == assessment.class_id)
+            & (
+                Enrollment.academic_session_id
+                == assessment.academic_session_id
+            ),
+        )
+        .where(
+            StudentScore.assessment_id == assessment.id,
+            Student.school_id == current_user.school_id,
+        )
+    ) or 0
+
+    scores_remaining = total_students - scores_entered
+
+    return AssessmentScoreProgressResponse(
+        assessment_id=assessment.id,
+        total_students=total_students,
+        scores_entered=scores_entered,
+        scores_remaining=scores_remaining,
+        is_complete=(
+            total_students > 0
+            and scores_entered == total_students
+        ),
+    )
 
 @router.post(
     "/bulk",

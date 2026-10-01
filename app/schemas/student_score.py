@@ -23,6 +23,14 @@ class StudentScoreBulkCreate(BaseModel):
     scores: list[StudentScoreBulkItem] = Field(min_length=1)
 
 
+class AssessmentScoreProgressResponse(BaseModel):
+    assessment_id: int
+    total_students: int
+    scores_entered: int
+    scores_remaining: int
+    is_complete: bool
+
+
 class StudentScoreResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
