@@ -3,14 +3,22 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app.core.dependencies import require_school_admin
+from app.core.dependencies import (
+    require_school_admin,
+    require_score_manager,
+)
 from app.database.connection import get_db
 from app.models.academic_session import AcademicSession
 from app.models.student import Student
 from app.models.term import Term
 from app.models.term_report_comment import TermReportComment
 from app.models.user import User
+from app.models.class_teacher_assignment import ClassTeacherAssignment
+from app.models.enrollment import Enrollment
+from app.models.teacher import Teacher
 from app.schemas.term_report_comment import (
+    ClassTeacherReportCommentCreate,
+    ClassTeacherReportCommentUpdate,
     TermReportCommentCreate,
     TermReportCommentResponse,
     TermReportCommentUpdate,
@@ -21,11 +29,331 @@ from app.services.subscription_service import (
 from app.services.result_publication_service import (
     require_student_result_unpublished,
 )
+from app.services.class_teacher_access_service import (
+    require_class_teacher_student_access,
+)
 
 router = APIRouter(
     prefix="/api/term-report-comments",
     tags=["Term Report Comments"],
 )
+
+# ============================================================
+# CLASS TEACHER REPORT COMMENTS
+# ============================================================
+
+
+@router.post(
+    "/class-teacher",
+    response_model=TermReportCommentResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+def create_class_teacher_report_comment(
+    comment_data: ClassTeacherReportCommentCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_score_manager),
+):
+    student = db.scalar(
+        select(Student).where(
+            Student.id == comment_data.student_id,
+            Student.school_id == current_user.school_id,
+        )
+    )
+
+    if student is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Student not found",
+        )
+
+    academic_session = db.scalar(
+        select(AcademicSession).where(
+            AcademicSession.id == comment_data.academic_session_id,
+            AcademicSession.school_id == current_user.school_id,
+        )
+    )
+
+    if academic_session is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Academic session not found",
+        )
+
+    term = db.scalar(
+        select(Term)
+        .join(
+            AcademicSession,
+            Term.academic_session_id == AcademicSession.id,
+        )
+        .where(
+            Term.id == comment_data.term_id,
+            AcademicSession.school_id == current_user.school_id,
+        )
+    )
+
+    if term is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Term not found",
+        )
+
+    if term.academic_session_id != comment_data.academic_session_id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=(
+                "Term does not belong to the selected "
+                "academic session"
+            ),
+        )
+
+    require_class_teacher_student_access(
+        db=db,
+        current_user=current_user,
+        student_id=comment_data.student_id,
+        academic_session_id=comment_data.academic_session_id,
+    )
+
+    require_active_term_subscription(
+        db=db,
+        school_id=current_user.school_id,
+        academic_session_id=comment_data.academic_session_id,
+        term_id=comment_data.term_id,
+    )
+
+    require_student_result_unpublished(
+        db=db,
+        student_id=comment_data.student_id,
+        academic_session_id=comment_data.academic_session_id,
+        term_id=comment_data.term_id,
+    )
+
+    existing_comment = db.scalar(
+        select(TermReportComment).where(
+            TermReportComment.student_id == comment_data.student_id,
+            TermReportComment.academic_session_id
+            == comment_data.academic_session_id,
+            TermReportComment.term_id == comment_data.term_id,
+        )
+    )
+
+    if existing_comment:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=(
+                "Report comment already exists for this "
+                "student, session and term"
+            ),
+        )
+
+    report_comment = TermReportComment(
+        student_id=comment_data.student_id,
+        academic_session_id=comment_data.academic_session_id,
+        term_id=comment_data.term_id,
+        teacher_comment=comment_data.teacher_comment,
+        principal_comment=None,
+    )
+
+    db.add(report_comment)
+
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Report comment already exists",
+        )
+
+    db.refresh(report_comment)
+
+    return report_comment
+
+
+@router.get(
+    "/class-teacher",
+    response_model=list[TermReportCommentResponse],
+)
+def get_class_teacher_report_comments(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_score_manager),
+):
+    if current_user.role == "admin":
+        comments = db.scalars(
+            select(TermReportComment)
+            .join(
+                Student,
+                TermReportComment.student_id == Student.id,
+            )
+            .join(
+                AcademicSession,
+                TermReportComment.academic_session_id
+                == AcademicSession.id,
+            )
+            .where(
+                Student.school_id == current_user.school_id,
+                AcademicSession.school_id == current_user.school_id,
+            )
+            .order_by(TermReportComment.id)
+        ).all()
+
+        return comments
+
+    comments = db.scalars(
+        select(TermReportComment)
+        .join(
+            Student,
+            TermReportComment.student_id == Student.id,
+        )
+        .join(
+            AcademicSession,
+            TermReportComment.academic_session_id
+            == AcademicSession.id,
+        )
+        .join(
+            Enrollment,
+            (
+                Enrollment.student_id
+                == TermReportComment.student_id
+            )
+            & (
+                Enrollment.academic_session_id
+                == TermReportComment.academic_session_id
+            ),
+        )
+        .join(
+            ClassTeacherAssignment,
+            (
+                ClassTeacherAssignment.class_id
+                == Enrollment.class_id
+            )
+            & (
+                ClassTeacherAssignment.academic_session_id
+                == Enrollment.academic_session_id
+            ),
+        )
+        .join(
+            Teacher,
+            ClassTeacherAssignment.teacher_id == Teacher.id,
+        )
+        .where(
+            Student.school_id == current_user.school_id,
+            AcademicSession.school_id == current_user.school_id,
+            Teacher.user_id == current_user.id,
+            Teacher.school_id == current_user.school_id,
+        )
+        .order_by(TermReportComment.id)
+    ).all()
+
+    return comments
+
+
+@router.get(
+    "/class-teacher/{comment_id}",
+    response_model=TermReportCommentResponse,
+)
+def get_class_teacher_report_comment(
+    comment_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_score_manager),
+):
+    comment = db.scalar(
+        select(TermReportComment)
+        .join(
+            Student,
+            TermReportComment.student_id == Student.id,
+        )
+        .join(
+            AcademicSession,
+            TermReportComment.academic_session_id
+            == AcademicSession.id,
+        )
+        .where(
+            TermReportComment.id == comment_id,
+            Student.school_id == current_user.school_id,
+            AcademicSession.school_id == current_user.school_id,
+        )
+    )
+
+    if comment is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Report comment not found",
+        )
+
+    require_class_teacher_student_access(
+        db=db,
+        current_user=current_user,
+        student_id=comment.student_id,
+        academic_session_id=comment.academic_session_id,
+    )
+
+    return comment
+
+
+@router.patch(
+    "/class-teacher/{comment_id}",
+    response_model=TermReportCommentResponse,
+)
+def update_class_teacher_report_comment(
+    comment_id: int,
+    comment_data: ClassTeacherReportCommentUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_score_manager),
+):
+    comment = db.scalar(
+        select(TermReportComment)
+        .join(
+            Student,
+            TermReportComment.student_id == Student.id,
+        )
+        .join(
+            AcademicSession,
+            TermReportComment.academic_session_id
+            == AcademicSession.id,
+        )
+        .where(
+            TermReportComment.id == comment_id,
+            Student.school_id == current_user.school_id,
+            AcademicSession.school_id == current_user.school_id,
+        )
+    )
+
+    if comment is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Report comment not found",
+        )
+
+    require_class_teacher_student_access(
+        db=db,
+        current_user=current_user,
+        student_id=comment.student_id,
+        academic_session_id=comment.academic_session_id,
+    )
+
+    require_active_term_subscription(
+        db=db,
+        school_id=current_user.school_id,
+        academic_session_id=comment.academic_session_id,
+        term_id=comment.term_id,
+    )
+
+    require_student_result_unpublished(
+        db=db,
+        student_id=comment.student_id,
+        academic_session_id=comment.academic_session_id,
+        term_id=comment.term_id,
+    )
+
+    update_data = comment_data.model_dump(exclude_unset=True)
+
+    if "teacher_comment" in update_data:
+        comment.teacher_comment = update_data["teacher_comment"]
+
+    db.commit()
+    db.refresh(comment)
+
+    return comment
 
 
 @router.post(

@@ -31,6 +31,28 @@ class TermReportCommentUpdate(BaseModel):
     )
 
 
+class ClassTeacherReportCommentCreate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    student_id: int = Field(gt=0)
+    academic_session_id: int = Field(gt=0)
+    term_id: int = Field(gt=0)
+
+    teacher_comment: str | None = Field(
+        default=None,
+        max_length=1000,
+    )
+
+
+class ClassTeacherReportCommentUpdate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    teacher_comment: str | None = Field(
+        default=None,
+        max_length=1000,
+    )
+
+
 class TermReportCommentResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
