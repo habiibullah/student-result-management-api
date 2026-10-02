@@ -65,6 +65,14 @@ class AcademicSession(Base):
         back_populates="academic_session",
         cascade="all, delete-orphan",
     )
+
+    class_teacher_assignments: Mapped[
+        list["ClassTeacherAssignment"]
+    ] = relationship(
+        back_populates="academic_session",
+        cascade="all, delete-orphan",
+    )
+
     class_subjects: Mapped[list["ClassSubject"]] = relationship(
         back_populates="academic_session",
         cascade="all, delete-orphan",

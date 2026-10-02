@@ -80,3 +80,10 @@ class Teacher(Base):
         back_populates="teacher",
         cascade="all, delete-orphan",
     )
+
+    class_teacher_assignments: Mapped[
+        list["ClassTeacherAssignment"]
+    ] = relationship(
+        back_populates="teacher",
+        cascade="all, delete-orphan",
+    )

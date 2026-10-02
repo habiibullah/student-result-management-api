@@ -7,6 +7,7 @@ from app.models.term import Term
 from app.models.enrollment import Enrollment
 from app.models.subject import Subject
 from app.models.teaching_assignment import TeachingAssignment
+from app.models.class_teacher_assignment import ClassTeacherAssignment
 from app.models.assessment import Assessment
 from app.models.student_score import StudentScore
 from app.models.student_attendance import StudentAttendance
@@ -49,4 +50,5 @@ __all__ = [
     "StudentBehaviouralAssessment",
     "PerformanceCommentBand",
     "ClassSubject",
+    "ClassTeacherAssignment",
 ]
