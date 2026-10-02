@@ -3,7 +3,10 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app.core.dependencies import require_school_admin
+from app.core.dependencies import (
+    require_school_admin,
+    require_score_manager,
+)
 from app.database.connection import get_db
 from app.models.academic_session import AcademicSession
 from app.models.student import Student
@@ -12,6 +15,9 @@ from app.models.student_behavioural_assessment import (
 )
 from app.models.term import Term
 from app.models.user import User
+from app.models.class_teacher_assignment import ClassTeacherAssignment
+from app.models.enrollment import Enrollment
+from app.models.teacher import Teacher
 from app.schemas.student_behavioural_assessment import (
     StudentBehaviouralAssessmentCreate,
     StudentBehaviouralAssessmentResponse,
@@ -23,7 +29,9 @@ from app.services.result_publication_service import (
 from app.services.subscription_service import (
     require_active_term_subscription,
 )
-
+from app.services.class_teacher_access_service import (
+    require_class_teacher_student_access,
+)
 
 router = APIRouter(
     prefix="/api/student-behavioural-assessments",
@@ -39,7 +47,7 @@ router = APIRouter(
 def create_student_behavioural_assessment(
     assessment_data: StudentBehaviouralAssessmentCreate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_school_admin),
+    current_user: User = Depends(require_score_manager),
 ):
     student = db.scalar(
         select(Student).where(
@@ -99,6 +107,13 @@ def create_student_behavioural_assessment(
                 "academic session"
             ),
         )
+
+    require_class_teacher_student_access(
+        db=db,
+        current_user=current_user,
+        student_id=assessment_data.student_id,
+        academic_session_id=assessment_data.academic_session_id,
+    )
 
     require_active_term_subscription(
         db=db,
@@ -163,9 +178,9 @@ def create_student_behavioural_assessment(
 )
 def get_student_behavioural_assessments(
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_school_admin),
+    current_user: User = Depends(require_score_manager),
 ):
-    assessments = db.scalars(
+    query = (
         select(StudentBehaviouralAssessment)
         .join(
             Student,
@@ -180,11 +195,45 @@ def get_student_behavioural_assessments(
             Student.school_id == current_user.school_id,
             AcademicSession.school_id == current_user.school_id,
         )
-        .order_by(StudentBehaviouralAssessment.id)
+    )
+
+    if current_user.role == "teacher":
+        query = (
+            query
+            .join(
+                Enrollment,
+                (Enrollment.student_id == StudentBehaviouralAssessment.student_id)
+                & (
+                    Enrollment.academic_session_id
+                    == StudentBehaviouralAssessment.academic_session_id
+                ),
+            )
+            .join(
+                ClassTeacherAssignment,
+                (
+                    ClassTeacherAssignment.class_id
+                    == Enrollment.class_id
+                )
+                & (
+                    ClassTeacherAssignment.academic_session_id
+                    == Enrollment.academic_session_id
+                ),
+            )
+            .join(
+                Teacher,
+                ClassTeacherAssignment.teacher_id == Teacher.id,
+            )
+            .where(
+                Teacher.user_id == current_user.id,
+                Teacher.school_id == current_user.school_id,
+            )
+        )
+
+    assessments = db.scalars(
+        query.order_by(StudentBehaviouralAssessment.id)
     ).all()
 
     return assessments
-
 
 @router.get(
     "/{assessment_id}",
@@ -193,7 +242,7 @@ def get_student_behavioural_assessments(
 def get_student_behavioural_assessment(
     assessment_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_school_admin),
+    current_user: User = Depends(require_score_manager),
 ):
     assessment = db.scalar(
         select(StudentBehaviouralAssessment)
@@ -218,6 +267,13 @@ def get_student_behavioural_assessment(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Behavioural assessment not found",
         )
+
+    require_class_teacher_student_access(
+        db=db,
+        current_user=current_user,
+        student_id=assessment.student_id,
+        academic_session_id=assessment.academic_session_id,
+    )
 
     return assessment
 
@@ -230,7 +286,7 @@ def update_student_behavioural_assessment(
     assessment_id: int,
     assessment_data: StudentBehaviouralAssessmentUpdate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_school_admin),
+    current_user: User = Depends(require_score_manager),
 ):
     assessment = db.scalar(
         select(StudentBehaviouralAssessment)
@@ -255,6 +311,13 @@ def update_student_behavioural_assessment(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Behavioural assessment not found",
         )
+
+    require_class_teacher_student_access(
+        db=db,
+        current_user=current_user,
+        student_id=assessment.student_id,
+        academic_session_id=assessment.academic_session_id,
+    )
 
     require_active_term_subscription(
         db=db,
