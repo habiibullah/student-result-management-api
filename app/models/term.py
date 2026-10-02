@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import date, datetime
 
-from sqlalchemy import DateTime, ForeignKey, String
+from sqlalchemy import DateTime, ForeignKey, Integer, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database.base import Base
@@ -21,6 +21,11 @@ class Term(Base):
     name: Mapped[str] = mapped_column(
         String(20),
         nullable=False,
+    )
+
+    school_days: Mapped[int | None] = mapped_column(
+        Integer,
+        nullable=True,
     )
 
     closing_date: Mapped[date | None] = mapped_column(

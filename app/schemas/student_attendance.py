@@ -38,6 +38,21 @@ class StudentAttendanceUpdate(BaseModel):
     days_absent: int | None = Field(default=None, ge=0)
 
 
+class ClassTeacherAttendanceCreate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    student_id: int = Field(gt=0)
+    academic_session_id: int = Field(gt=0)
+    term_id: int = Field(gt=0)
+    days_present: int = Field(ge=0)
+
+
+class ClassTeacherAttendanceUpdate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    days_present: int = Field(ge=0)
+
+
 class StudentAttendanceResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 

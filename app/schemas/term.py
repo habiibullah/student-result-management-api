@@ -4,6 +4,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 
 class TermCreate(BaseModel):
+    school_days: int | None = Field(default=None, gt=0)
     academic_session_id: int = Field(gt=0)
     name: str = Field(min_length=2, max_length=20)
 
@@ -13,6 +14,7 @@ class TermCreate(BaseModel):
 
 
 class TermUpdate(BaseModel):
+    school_days: int | None = Field(default=None, gt=0)
     name: str | None = Field(
         default=None,
         min_length=2,
@@ -24,6 +26,7 @@ class TermUpdate(BaseModel):
 
 
 class TermResponse(BaseModel):
+    school_days: int | None
     model_config = ConfigDict(from_attributes=True)
 
     id: int

@@ -3,14 +3,22 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app.core.dependencies import require_school_admin
+from app.core.dependencies import (
+    require_school_admin,
+    require_score_manager,
+)
 from app.database.connection import get_db
 from app.models.academic_session import AcademicSession
 from app.models.student import Student
 from app.models.student_attendance import StudentAttendance
 from app.models.term import Term
 from app.models.user import User
+from app.models.class_teacher_assignment import ClassTeacherAssignment
+from app.models.enrollment import Enrollment
+from app.models.teacher import Teacher
 from app.schemas.student_attendance import (
+    ClassTeacherAttendanceCreate,
+    ClassTeacherAttendanceUpdate,
     StudentAttendanceCreate,
     StudentAttendanceResponse,
     StudentAttendanceUpdate,
@@ -20,6 +28,9 @@ from app.services.subscription_service import (
 )
 from app.services.result_publication_service import (
     require_student_result_unpublished,
+)
+from app.services.class_teacher_access_service import (
+    require_class_teacher_student_access,
 )
 
 router = APIRouter(
@@ -54,6 +65,387 @@ def validate_attendance_values(
             ),
         )
 
+
+@router.post(
+    "/class-teacher",
+    response_model=StudentAttendanceResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+def create_class_teacher_attendance(
+    attendance_data: ClassTeacherAttendanceCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_score_manager),
+):
+    student = db.scalar(
+        select(Student).where(
+            Student.id == attendance_data.student_id,
+            Student.school_id == current_user.school_id,
+        )
+    )
+
+    if student is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Student not found",
+        )
+
+    academic_session = db.scalar(
+        select(AcademicSession).where(
+            AcademicSession.id
+            == attendance_data.academic_session_id,
+            AcademicSession.school_id
+            == current_user.school_id,
+        )
+    )
+
+    if academic_session is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Academic session not found",
+        )
+
+    term = db.scalar(
+        select(Term)
+        .join(
+            AcademicSession,
+            Term.academic_session_id == AcademicSession.id,
+        )
+        .where(
+            Term.id == attendance_data.term_id,
+            AcademicSession.school_id == current_user.school_id,
+        )
+    )
+
+    if term is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Term not found",
+        )
+
+    if (
+        term.academic_session_id
+        != attendance_data.academic_session_id
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=(
+                "Term does not belong to the selected "
+                "academic session"
+            ),
+        )
+
+    require_class_teacher_student_access(
+        db=db,
+        current_user=current_user,
+        student_id=attendance_data.student_id,
+        academic_session_id=(
+            attendance_data.academic_session_id
+        ),
+    )
+
+    if term.school_days is None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=(
+                "School days must be configured for "
+                "this term before attendance can be entered"
+            ),
+        )
+
+    if attendance_data.days_present > term.school_days:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Days present cannot exceed school days",
+        )
+
+    require_active_term_subscription(
+        db=db,
+        school_id=current_user.school_id,
+        academic_session_id=(
+            attendance_data.academic_session_id
+        ),
+        term_id=attendance_data.term_id,
+    )
+
+    require_student_result_unpublished(
+        db=db,
+        student_id=attendance_data.student_id,
+        academic_session_id=(
+            attendance_data.academic_session_id
+        ),
+        term_id=attendance_data.term_id,
+    )
+
+    existing_attendance = db.scalar(
+        select(StudentAttendance).where(
+            StudentAttendance.student_id
+            == attendance_data.student_id,
+            StudentAttendance.academic_session_id
+            == attendance_data.academic_session_id,
+            StudentAttendance.term_id
+            == attendance_data.term_id,
+        )
+    )
+
+    if existing_attendance:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=(
+                "Attendance already exists for this "
+                "student, session and term"
+            ),
+        )
+
+    attendance = StudentAttendance(
+        student_id=attendance_data.student_id,
+        academic_session_id=(
+            attendance_data.academic_session_id
+        ),
+        term_id=attendance_data.term_id,
+        school_days=term.school_days,
+        days_present=attendance_data.days_present,
+        days_absent=(
+            term.school_days - attendance_data.days_present
+        ),
+    )
+
+    db.add(attendance)
+
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=(
+                "Attendance already exists for this "
+                "student, session and term"
+            ),
+        )
+
+    db.refresh(attendance)
+
+    return attendance
+
+
+@router.get(
+    "/class-teacher",
+    response_model=list[StudentAttendanceResponse],
+)
+def get_class_teacher_attendance_records(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_score_manager),
+):
+    if current_user.role == "admin":
+        return db.scalars(
+            select(StudentAttendance)
+            .join(
+                Student,
+                StudentAttendance.student_id == Student.id,
+            )
+            .join(
+                AcademicSession,
+                StudentAttendance.academic_session_id
+                == AcademicSession.id,
+            )
+            .where(
+                Student.school_id == current_user.school_id,
+                AcademicSession.school_id
+                == current_user.school_id,
+            )
+            .order_by(StudentAttendance.id)
+        ).all()
+
+    attendance_records = db.scalars(
+        select(StudentAttendance)
+        .join(
+            Student,
+            StudentAttendance.student_id == Student.id,
+        )
+        .join(
+            AcademicSession,
+            StudentAttendance.academic_session_id
+            == AcademicSession.id,
+        )
+        .join(
+            Enrollment,
+            (Enrollment.student_id == StudentAttendance.student_id)
+            & (
+                Enrollment.academic_session_id
+                == StudentAttendance.academic_session_id
+            ),
+        )
+        .join(
+            ClassTeacherAssignment,
+            (
+                ClassTeacherAssignment.class_id
+                == Enrollment.class_id
+            )
+            & (
+                ClassTeacherAssignment.academic_session_id
+                == Enrollment.academic_session_id
+            ),
+        )
+        .join(
+            Teacher,
+            Teacher.id == ClassTeacherAssignment.teacher_id,
+        )
+        .where(
+            Student.school_id == current_user.school_id,
+            AcademicSession.school_id
+            == current_user.school_id,
+            Teacher.user_id == current_user.id,
+            Teacher.school_id == current_user.school_id,
+        )
+        .order_by(StudentAttendance.id)
+    ).all()
+
+    return attendance_records
+
+
+@router.get(
+    "/class-teacher/{attendance_id}",
+    response_model=StudentAttendanceResponse,
+)
+def get_class_teacher_attendance(
+    attendance_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_score_manager),
+):
+    attendance = db.scalar(
+        select(StudentAttendance)
+        .join(
+            Student,
+            StudentAttendance.student_id == Student.id,
+        )
+        .join(
+            AcademicSession,
+            StudentAttendance.academic_session_id
+            == AcademicSession.id,
+        )
+        .where(
+            StudentAttendance.id == attendance_id,
+            Student.school_id == current_user.school_id,
+            AcademicSession.school_id
+            == current_user.school_id,
+        )
+    )
+
+    if attendance is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Attendance record not found",
+        )
+
+    require_class_teacher_student_access(
+        db=db,
+        current_user=current_user,
+        student_id=attendance.student_id,
+        academic_session_id=attendance.academic_session_id,
+    )
+
+    return attendance
+
+
+@router.patch(
+    "/class-teacher/{attendance_id}",
+    response_model=StudentAttendanceResponse,
+)
+def update_class_teacher_attendance(
+    attendance_id: int,
+    attendance_data: ClassTeacherAttendanceUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_score_manager),
+):
+    attendance = db.scalar(
+        select(StudentAttendance)
+        .join(
+            Student,
+            StudentAttendance.student_id == Student.id,
+        )
+        .join(
+            AcademicSession,
+            StudentAttendance.academic_session_id
+            == AcademicSession.id,
+        )
+        .where(
+            StudentAttendance.id == attendance_id,
+            Student.school_id == current_user.school_id,
+            AcademicSession.school_id
+            == current_user.school_id,
+        )
+    )
+
+    if attendance is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Attendance record not found",
+        )
+
+    require_class_teacher_student_access(
+        db=db,
+        current_user=current_user,
+        student_id=attendance.student_id,
+        academic_session_id=attendance.academic_session_id,
+    )
+
+    term = db.scalar(
+        select(Term)
+        .join(
+            AcademicSession,
+            Term.academic_session_id == AcademicSession.id,
+        )
+        .where(
+            Term.id == attendance.term_id,
+            AcademicSession.school_id == current_user.school_id,
+        )
+    )
+
+    if term is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Term not found",
+        )
+
+    if term.school_days is None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=(
+                "School days must be configured for "
+                "this term before attendance can be entered"
+            ),
+        )
+
+    if attendance_data.days_present > term.school_days:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Days present cannot exceed school days",
+        )
+
+    require_active_term_subscription(
+        db=db,
+        school_id=current_user.school_id,
+        academic_session_id=attendance.academic_session_id,
+        term_id=attendance.term_id,
+    )
+
+    require_student_result_unpublished(
+        db=db,
+        student_id=attendance.student_id,
+        academic_session_id=attendance.academic_session_id,
+        term_id=attendance.term_id,
+    )
+
+    attendance.school_days = term.school_days
+    attendance.days_present = attendance_data.days_present
+    attendance.days_absent = (
+        term.school_days - attendance_data.days_present
+    )
+
+    db.commit()
+    db.refresh(attendance)
+
+    return attendance
 
 @router.post(
     "",

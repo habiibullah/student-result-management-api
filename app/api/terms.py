@@ -71,6 +71,7 @@ def create_term(
     term = Term(
         academic_session_id=term_data.academic_session_id,
         name=term_data.name,
+        school_days=term_data.school_days,
         closing_date=term_data.closing_date,
         next_term_resumption_date=(
             term_data.next_term_resumption_date
@@ -183,6 +184,9 @@ def update_term(
     update_data = term_data.model_dump(
         exclude_unset=True
     )
+
+    if "school_days" in update_data:
+        term.school_days = update_data["school_days"]
 
     if "closing_date" in update_data:
         term.closing_date = update_data[
