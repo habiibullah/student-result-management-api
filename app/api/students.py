@@ -3,9 +3,17 @@ from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app.core.dependencies import require_school_admin
+from app.core.dependencies import get_current_user, require_school_admin
 from app.database.connection import get_db
-from app.models import Enrollment, Student, User
+from app.models import (
+    AcademicSession,
+    Class,
+    ClassTeacherAssignment,
+    Enrollment,
+    Student,
+    Teacher,
+    User,
+)
 from app.schemas.student import (
     StudentCreate,
     StudentResponse,
@@ -113,6 +121,81 @@ def get_students(
         .where(
             Student.school_id
             == current_user.school_id
+        )
+        .order_by(
+            Student.last_name,
+            Student.first_name,
+        )
+    ).all()
+
+    return students
+
+@router.get(
+    "/class-teacher",
+    response_model=list[StudentResponse],
+)
+def get_class_teacher_students(
+    class_id: int,
+    academic_session_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    if current_user.role != "teacher":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Class teacher access required",
+        )
+
+    teacher = db.scalar(
+        select(Teacher).where(
+            Teacher.user_id == current_user.id,
+            Teacher.school_id == current_user.school_id,
+        )
+    )
+
+    if teacher is None:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Class teacher access required",
+        )
+
+    assignment = db.scalar(
+        select(ClassTeacherAssignment)
+        .join(
+            Class,
+            ClassTeacherAssignment.class_id == Class.id,
+        )
+        .join(
+            AcademicSession,
+            ClassTeacherAssignment.academic_session_id
+            == AcademicSession.id,
+        )
+        .where(
+            ClassTeacherAssignment.teacher_id == teacher.id,
+            ClassTeacherAssignment.class_id == class_id,
+            ClassTeacherAssignment.academic_session_id
+            == academic_session_id,
+            Class.school_id == current_user.school_id,
+            AcademicSession.school_id == current_user.school_id,
+        )
+    )
+
+    if assignment is None:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Class teacher access required",
+        )
+
+    students = db.scalars(
+        select(Student)
+        .join(
+            Enrollment,
+            Enrollment.student_id == Student.id,
+        )
+        .where(
+            Enrollment.class_id == class_id,
+            Enrollment.academic_session_id == academic_session_id,
+            Student.school_id == current_user.school_id,
         )
         .order_by(
             Student.last_name,
