@@ -232,3 +232,57 @@ def test_class_teacher_cannot_access_different_class(
 
     assert enrollment_response.status_code == 403
     assert student_response.status_code == 403
+
+def test_class_teacher_can_list_terms_for_assigned_session(
+    client,
+    db,
+    school_one_teacher,
+    school_one_class,
+    academic_session_one,
+):
+    _assign_class_teacher(
+        db,
+        school_one_teacher,
+        school_one_class,
+        academic_session_one,
+    )
+
+    token = _login(client, school_one_teacher.user.email)
+
+    response = client.get(
+        "/api/terms/class-teacher",
+        headers=_auth(token),
+        params={
+            "academic_session_id": academic_session_one.id,
+        },
+    )
+
+    assert response.status_code == 200, response.text
+
+    data = response.json()
+
+    assert all(
+        term["academic_session_id"] == academic_session_one.id
+        for term in data
+    )
+
+
+def test_unassigned_teacher_cannot_list_terms(
+    client,
+    school_one_teacher,
+    academic_session_one,
+):
+    token = _login(client, school_one_teacher.user.email)
+
+    response = client.get(
+        "/api/terms/class-teacher",
+        headers=_auth(token),
+        params={
+            "academic_session_id": academic_session_one.id,
+        },
+    )
+
+    assert response.status_code == 403
+    assert response.json()["detail"] == (
+        "Class teacher access required"
+    )

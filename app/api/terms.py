@@ -3,14 +3,16 @@ from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app.core.dependencies import require_school_admin
+from app.core.dependencies import get_current_user, require_school_admin
 from app.database.connection import get_db
 from app.models import (
     AcademicSession,
     Assessment,
+    ClassTeacherAssignment,
     ResultPublication,
     StudentAttendance,
     Subscription,
+    Teacher,
     Term,
     TermReportComment,
     User,
@@ -112,6 +114,70 @@ def get_terms(
         .where(
             AcademicSession.school_id
             == current_user.school_id
+        )
+        .order_by(Term.id)
+    ).all()
+
+    return terms
+
+@router.get(
+    "/class-teacher",
+    response_model=list[TermResponse],
+)
+def get_class_teacher_terms(
+    academic_session_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    if current_user.role != "teacher":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Class teacher access required",
+        )
+
+    teacher = db.scalar(
+        select(Teacher).where(
+            Teacher.user_id == current_user.id,
+            Teacher.school_id == current_user.school_id,
+        )
+    )
+
+    if teacher is None:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Class teacher access required",
+        )
+
+    assignment = db.scalar(
+        select(ClassTeacherAssignment)
+        .join(
+            AcademicSession,
+            ClassTeacherAssignment.academic_session_id
+            == AcademicSession.id,
+        )
+        .where(
+            ClassTeacherAssignment.teacher_id == teacher.id,
+            ClassTeacherAssignment.academic_session_id
+            == academic_session_id,
+            AcademicSession.school_id == current_user.school_id,
+        )
+    )
+
+    if assignment is None:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Class teacher access required",
+        )
+
+    terms = db.scalars(
+        select(Term)
+        .join(
+            AcademicSession,
+            Term.academic_session_id == AcademicSession.id,
+        )
+        .where(
+            Term.academic_session_id == academic_session_id,
+            AcademicSession.school_id == current_user.school_id,
         )
         .order_by(Term.id)
     ).all()
