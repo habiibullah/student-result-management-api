@@ -36,6 +36,7 @@ from app.api.term_report_comments import (
     router as term_report_comments_router,
 )
 from app.api.report_sheets import router as report_sheets_router
+from app.api.analytics import router as analytics_router
 from app.api.schools import router as schools_router
 from app.api.subscription_plans import (
     router as subscription_plans_router,
@@ -137,6 +138,7 @@ app.include_router(student_behavioural_assessments_router)
 app.include_router(term_report_comments_router)
 
 app.include_router(report_sheets_router)
+app.include_router(analytics_router)
 
 app.include_router(schools_router)
 
