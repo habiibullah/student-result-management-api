@@ -14,7 +14,11 @@ from app.models import (
     Teacher,
     User,
 )
+
 from app.schemas.student import (
+    ClassTeacherBulkRegistrationRequest,
+    ClassTeacherBulkRegistrationResponse,
+    ClassTeacherRegistrationSuccess,
     StudentCreate,
     StudentResponse,
     StudentUpdate,
@@ -103,6 +107,152 @@ def create_student(
 
     return student
 
+@router.post(
+    "/class-teacher/register",
+    response_model=ClassTeacherBulkRegistrationResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+def register_class_teacher_students(
+    registration_data: ClassTeacherBulkRegistrationRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    if current_user.role != "teacher":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Class teacher access required",
+        )
+
+    teacher = db.scalar(
+        select(Teacher).where(
+            Teacher.user_id == current_user.id,
+            Teacher.school_id == current_user.school_id,
+        )
+    )
+
+    if teacher is None:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Class teacher access required",
+        )
+
+    assignment = db.scalar(
+        select(ClassTeacherAssignment)
+        .join(
+            Class,
+            ClassTeacherAssignment.class_id == Class.id,
+        )
+        .join(
+            AcademicSession,
+            ClassTeacherAssignment.academic_session_id
+            == AcademicSession.id,
+        )
+        .where(
+            ClassTeacherAssignment.teacher_id == teacher.id,
+            ClassTeacherAssignment.class_id
+            == registration_data.class_id,
+            ClassTeacherAssignment.academic_session_id
+            == registration_data.academic_session_id,
+            Class.school_id == current_user.school_id,
+            AcademicSession.school_id == current_user.school_id,
+        )
+    )
+
+    if assignment is None:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Class teacher access required",
+        )
+
+    successes = []
+    errors = []
+
+    for row, student_data in enumerate(
+        registration_data.students,
+        start=1,
+    ):
+        existing_student = db.scalar(
+            select(Student).where(
+                Student.admission_number
+                == student_data.admission_number,
+                Student.school_id == current_user.school_id,
+            )
+        )
+
+        if existing_student is not None:
+            errors.append(
+                {
+                    "row": row,
+                    "admission_number": student_data.admission_number,
+                    "detail": (
+                        "A student with this admission number "
+                        "already exists in this school"
+                    ),
+                }
+            )
+            continue
+
+        try:
+            student = Student(
+                user_id=None,
+                school_id=current_user.school_id,
+                admission_number=student_data.admission_number,
+                first_name=student_data.first_name,
+                last_name=student_data.last_name,
+                date_of_birth=student_data.date_of_birth,
+                gender=student_data.gender,
+            )
+
+            db.add(student)
+            db.flush()
+
+            enrollment = Enrollment(
+                student_id=student.id,
+                class_id=registration_data.class_id,
+                academic_session_id=(
+                    registration_data.academic_session_id
+                ),
+            )
+
+            db.add(enrollment)
+            db.flush()
+
+            student_id = student.id
+            enrollment_id = enrollment.id
+
+            db.commit()
+
+            student = db.get(Student, student_id)
+
+            successes.append(
+                ClassTeacherRegistrationSuccess(
+                    row=row,
+                    student=student,
+                    enrollment_id=enrollment_id,
+                )
+            )
+
+        except IntegrityError:
+            db.rollback()
+
+            errors.append(
+                {
+                    "row": row,
+                    "admission_number": student_data.admission_number,
+                    "detail": (
+                        "Student could not be registered because "
+                        "of a duplicate record"
+                    ),
+                }
+            )
+
+    return ClassTeacherBulkRegistrationResponse(
+        submitted=len(registration_data.students),
+        created=len(successes),
+        rejected=len(errors),
+        successes=successes,
+        errors=errors,
+    )
 
 @router.get(
     "",

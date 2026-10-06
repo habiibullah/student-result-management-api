@@ -59,3 +59,35 @@ class StudentResponse(BaseModel):
     gender: str | None
     has_profile_photo: bool = False
     created_at: datetime
+
+class ClassTeacherStudentRegistrationItem(StudentCreate):
+    pass
+
+
+class ClassTeacherBulkRegistrationRequest(BaseModel):
+    class_id: int = Field(gt=0)
+    academic_session_id: int = Field(gt=0)
+    students: list[ClassTeacherStudentRegistrationItem] = Field(
+        min_length=1,
+        max_length=200,
+    )
+
+
+class ClassTeacherRegistrationSuccess(BaseModel):
+    row: int
+    student: StudentResponse
+    enrollment_id: int
+
+
+class ClassTeacherRegistrationError(BaseModel):
+    row: int
+    admission_number: str
+    detail: str
+
+
+class ClassTeacherBulkRegistrationResponse(BaseModel):
+    submitted: int
+    created: int
+    rejected: int
+    successes: list[ClassTeacherRegistrationSuccess]
+    errors: list[ClassTeacherRegistrationError]
