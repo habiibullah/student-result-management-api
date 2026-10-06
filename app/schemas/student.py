@@ -60,14 +60,16 @@ class StudentResponse(BaseModel):
     has_profile_photo: bool = False
     created_at: datetime
 
-class ClassTeacherStudentRegistrationItem(StudentCreate):
+
+
+class StudentRegistrationItem(StudentCreate):
     pass
 
 
-class ClassTeacherBulkRegistrationRequest(BaseModel):
+class BulkStudentRegistrationRequest(BaseModel):
     class_id: int = Field(gt=0)
     academic_session_id: int = Field(gt=0)
-    students: list[ClassTeacherStudentRegistrationItem] = Field(
+    students: list[StudentRegistrationItem] = Field(
         min_length=1,
         max_length=200,
     )
