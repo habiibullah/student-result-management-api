@@ -145,6 +145,7 @@ def register_school(
     )
 
 
+
 @router.get(
     "",
     response_model=list[SchoolResponse],
@@ -162,69 +163,6 @@ def list_schools(
 
     return list(schools)
 
-@router.get(
-    "/{school_id}",
-    response_model=SchoolResponse,
-)
-def get_school_by_id(
-    school_id: int,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(require_platform_admin),
-):
-    school = db.scalar(
-        select(School).where(
-            School.id == school_id
-        )
-    )
-
-    if school is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="School not found",
-        )
-
-    return school
-
-@router.patch(
-    "/{school_id}",
-    response_model=SchoolResponse,
-)
-def update_school_by_id(
-    school_id: int,
-    payload: SchoolUpdate,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(require_platform_admin),
-):
-    school = db.scalar(
-        select(School).where(
-            School.id == school_id
-        )
-    )
-
-    if school is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="School not found",
-        )
-
-    update_data = payload.model_dump(
-        exclude_unset=True
-    )
-
-    for field, value in update_data.items():
-        if isinstance(value, str):
-            value = value.strip()
-
-        setattr(
-            school,
-            field,
-            value,
-        )
-
-    db.commit()
-    db.refresh(school)
-
-    return school
 
 @router.get(
     "/me",
@@ -261,6 +199,72 @@ def update_my_school(
     school = db.scalar(
         select(School).where(
             School.id == current_user.school_id
+        )
+    )
+
+    if school is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="School not found",
+        )
+
+    update_data = payload.model_dump(
+        exclude_unset=True
+    )
+
+    for field, value in update_data.items():
+        if isinstance(value, str):
+            value = value.strip()
+
+        setattr(
+            school,
+            field,
+            value,
+        )
+
+    db.commit()
+    db.refresh(school)
+
+    return school
+
+
+@router.get(
+    "/{school_id}",
+    response_model=SchoolResponse,
+)
+def get_school_by_id(
+    school_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_platform_admin),
+):
+    school = db.scalar(
+        select(School).where(
+            School.id == school_id
+        )
+    )
+
+    if school is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="School not found",
+        )
+
+    return school
+
+
+@router.patch(
+    "/{school_id}",
+    response_model=SchoolResponse,
+)
+def update_school_by_id(
+    school_id: int,
+    payload: SchoolUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_platform_admin),
+):
+    school = db.scalar(
+        select(School).where(
+            School.id == school_id
         )
     )
 
