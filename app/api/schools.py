@@ -1,4 +1,7 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from uuid import uuid4
+
+from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
+from fastapi.responses import FileResponse
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
@@ -8,6 +11,11 @@ from app.core.dependencies import (
     require_school_admin,
 )
 from app.core.security import hash_password
+from app.core.school_logo_storage import (
+    MAX_LOGO_BYTES,
+    school_logo_directory,
+    validate_school_logo,
+)
 from app.database.connection import get_db
 from app.models.school import School
 from app.models.user import User
@@ -226,6 +234,154 @@ def update_my_school(
     db.refresh(school)
 
     return school
+
+
+@router.post(
+    "/me/logo",
+    response_model=SchoolResponse,
+)
+def upload_my_school_logo(
+    logo: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_school_admin),
+):
+    school = db.scalar(
+        select(School).where(
+            School.id == current_user.school_id
+        )
+    )
+
+    if school is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="School not found",
+        )
+
+    try:
+        content = logo.file.read(MAX_LOGO_BYTES + 1)
+        normalized_logo = validate_school_logo(content)
+    finally:
+        logo.file.close()
+
+    logo_directory = school_logo_directory()
+    logo_directory.mkdir(
+        parents=True,
+        exist_ok=True,
+    )
+
+    filename = f"school_{school.id}_{uuid4().hex}.jpg"
+    new_logo_path = logo_directory / filename
+
+    try:
+        new_logo_path.write_bytes(normalized_logo)
+    except OSError:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Could not save school logo",
+        )
+
+    school.logo_url = "/api/schools/me/logo"
+
+    try:
+        db.commit()
+        db.refresh(school)
+    except Exception:
+        db.rollback()
+        new_logo_path.unlink(missing_ok=True)
+        raise
+
+    for old_path in logo_directory.glob(
+        f"school_{school.id}_*.jpg"
+    ):
+        if old_path != new_logo_path:
+            old_path.unlink(missing_ok=True)
+
+    return school
+
+@router.get(
+    "/me/logo",
+)
+def get_my_school_logo(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_school_admin),
+):
+    school = db.scalar(
+        select(School).where(
+            School.id == current_user.school_id
+        )
+    )
+
+    if school is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="School not found",
+        )
+
+    logo_directory = school_logo_directory()
+
+    logo_files = sorted(
+        logo_directory.glob(
+            f"school_{school.id}_*.jpg"
+        ),
+        key=lambda path: path.stat().st_mtime,
+        reverse=True,
+    )
+
+    if not school.logo_url or not logo_files:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="School logo not found",
+        )
+
+    return FileResponse(
+        path=logo_files[0],
+        media_type="image/jpeg",
+        headers={
+            "Cache-Control": "private, no-store",
+            "X-Content-Type-Options": "nosniff",
+        },
+    )
+
+
+@router.delete(
+    "/me/logo",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+def delete_my_school_logo(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_school_admin),
+):
+    school = db.scalar(
+        select(School).where(
+            School.id == current_user.school_id
+        )
+    )
+
+    if school is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="School not found",
+        )
+
+    logo_directory = school_logo_directory()
+
+    logo_files = list(
+        logo_directory.glob(
+            f"school_{school.id}_*.jpg"
+        )
+    )
+
+    school.logo_url = None
+
+    try:
+        db.commit()
+        db.refresh(school)
+    except Exception:
+        db.rollback()
+        raise
+
+    for logo_path in logo_files:
+        logo_path.unlink(missing_ok=True)
 
 
 @router.get(
