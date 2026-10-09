@@ -138,3 +138,42 @@ def verify_transaction(
         )
 
     return response_data
+
+def verify_transaction_by_reference(
+    tx_ref: str,
+) -> dict[str, Any]:
+    if not tx_ref.strip():
+        raise FlutterwaveServiceError(
+            "Transaction reference is required"
+        )
+
+    try:
+        response = httpx.get(
+            f"{FLUTTERWAVE_BASE_URL}/transactions/verify_by_reference",
+            headers=_get_headers(),
+            params={"tx_ref": tx_ref},
+            timeout=30.0,
+        )
+    except httpx.RequestError as exc:
+        raise FlutterwaveServiceError(
+            "Could not connect to Flutterwave"
+        ) from exc
+
+    if response.status_code >= 400:
+        raise FlutterwaveServiceError(
+            "Flutterwave transaction reference lookup failed"
+        )
+
+    try:
+        response_data = response.json()
+    except ValueError as exc:
+        raise FlutterwaveServiceError(
+            "Invalid response received from Flutterwave"
+        ) from exc
+
+    if response_data.get("status") != "success":
+        raise FlutterwaveServiceError(
+            "Flutterwave could not verify the transaction reference"
+        )
+
+    return response_data

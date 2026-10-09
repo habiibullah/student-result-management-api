@@ -199,6 +199,62 @@ def test_existing_pending_payment_link_is_reused(
     )
 
 
+def test_retry_reuses_existing_pending_checkout(
+    client,
+    db,
+    monkeypatch,
+    school_admin,
+    pending_subscription,
+):
+    old_payment = create_payment(
+        db=db,
+        school_id=school_admin.school_id,
+        subscription_id=pending_subscription.id,
+        tx_ref="TEST-OLD-CHECKOUT",
+        payment_link="https://checkout.test/old",
+    )
+
+    def provider_should_not_be_called(*args, **kwargs):
+        raise AssertionError(
+            "Retry must not create another checkout"
+        )
+
+    monkeypatch.setattr(
+        "app.api.payments.initialize_payment",
+        provider_should_not_be_called,
+    )
+
+    token = login(client, school_admin.email)
+
+    response = client.post(
+        "/api/payments/initialize",
+        headers=auth_headers(token),
+        json={
+            "subscription_id": pending_subscription.id,
+            "retry": True,
+        },
+    )
+
+    assert response.status_code == 200
+
+    data = response.json()
+
+    assert data["payment_id"] == old_payment.id
+    assert data["tx_ref"] == old_payment.tx_ref
+    assert data["payment_link"] == old_payment.payment_link
+
+    payments = (
+        db.query(PaymentTransaction)
+        .filter(
+            PaymentTransaction.subscription_id
+            == pending_subscription.id
+        )
+        .all()
+    )
+
+    assert len(payments) == 1
+
+
 def test_active_subscription_cannot_initialize_payment(
     client,
     monkeypatch,

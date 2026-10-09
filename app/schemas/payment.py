@@ -7,7 +7,6 @@ from pydantic import BaseModel, ConfigDict
 class PaymentInitializeRequest(BaseModel):
     subscription_id: int
 
-
 class PaymentVerifyRequest(BaseModel):
     transaction_id: str
 

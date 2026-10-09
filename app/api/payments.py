@@ -13,6 +13,7 @@ from fastapi import (
     Request,
     status,
 )
+from fastapi.responses import HTMLResponse
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 from app.core.config import settings
@@ -135,6 +136,7 @@ def initialize_subscription_payment(
         )
     )
 
+
     if pending_payment is not None:
         return PaymentInitializeResponse(
             payment_id=pending_payment.id,
@@ -208,7 +210,7 @@ def initialize_subscription_payment(
     "/{payment_id}/verify",
     response_model=PaymentVerifyResponse,
 )
-    
+
 def verify_subscription_payment(
     payment_id: int,
     payload: PaymentVerifyRequest,
@@ -260,6 +262,8 @@ def verify_subscription_payment(
         subscription_status=subscription.status,
         verified_at=payment.verified_at,
     )
+
+
 @router.get(
     "",
     response_model=list[PaymentTransactionResponse],
@@ -283,6 +287,106 @@ def list_school_payments(
     )
 
     return payments
+
+
+@router.get("/callback", response_class=HTMLResponse)
+def flutterwave_payment_callback(
+    status: str | None = None,
+    tx_ref: str | None = None,
+    transaction_id: str | None = None,
+    db: Session = Depends(get_db),
+):
+    """
+    Handle the browser redirect after Flutterwave checkout.
+
+    Never trust the redirect status alone. Successful payments
+    must be verified directly with Flutterwave.
+    """
+
+    def result_page(message: str) -> HTMLResponse:
+        return HTMLResponse(
+            content=(
+                "<!DOCTYPE html>"
+                "<html lang='en'>"
+                "<head>"
+                "<meta charset='utf-8'>"
+                "<meta name='viewport' "
+                "content='width=device-width, initial-scale=1'>"
+                "<title>Acadivio Payment</title>"
+                "</head>"
+                "<body style='font-family:sans-serif;"
+                "max-width:520px;margin:60px auto;"
+                "padding:20px;text-align:center'>"
+                "<h2>Acadivio Payment</h2>"
+                f"<p>{message}</p>"
+                "<p>Return to Acadivio and refresh "
+                "your subscription status.</p>"
+                "</body></html>"
+            )
+        )
+
+    if not tx_ref:
+        return result_page(
+            "Payment reference is missing. "
+            "No subscription changes were made."
+        )
+
+    payment = db.scalar(
+        select(PaymentTransaction).where(
+            PaymentTransaction.tx_ref == tx_ref,
+        )
+    )
+
+    if payment is None:
+        return result_page(
+            "Payment reference was not recognized."
+        )
+
+    if not transaction_id:
+        return result_page(
+            "Payment is not yet confirmed."
+        )
+
+    subscription = db.scalar(
+        select(Subscription).where(
+            Subscription.id == payment.subscription_id,
+            Subscription.school_id == payment.school_id,
+        )
+    )
+
+    if subscription is None:
+        return result_page(
+            "The associated subscription could not be found."
+        )
+
+    if status != "successful":
+        return result_page(
+            "Checkout was not completed successfully. "
+            "Your payment has not been confirmed."
+        )
+
+    try:
+        payment, subscription = process_verified_payment(
+            db=db,
+            payment=payment,
+            subscription=subscription,
+            transaction_id=transaction_id,
+        )
+    except HTTPException:
+        return result_page(
+            "Payment verification could not be completed. "
+            "Please check your subscription status later."
+        )
+
+    if payment.status == "successful" and subscription.status == "active":
+        return result_page(
+            "Payment verified successfully. "
+            "Your subscription is active."
+        )
+
+    return result_page(
+        "Payment verification is still pending."
+    )
 
 
 @router.get(
