@@ -522,6 +522,20 @@ def test_successful_verification_activates_subscription(
     assert pending_subscription.activated_at is not None
 
 
+    from app.services.subscription_expiration import (
+        calculate_subscription_expiration,
+    )
+    from app.models.term import Term
+
+    term = db.get(Term, pending_subscription.term_id)
+
+    expected_expiration = calculate_subscription_expiration(
+        term.closing_date,
+        activated_at=pending_subscription.activated_at,
+    )
+
+    assert pending_subscription.expires_at == expected_expiration
+
 def test_verification_is_idempotent_for_same_transaction(
     client,
     db,
@@ -570,6 +584,12 @@ def test_verification_is_idempotent_for_same_transaction(
 
     assert first_response.status_code == 200
 
+    db.refresh(pending_subscription)
+
+    first_expiration = pending_subscription.expires_at
+
+    assert first_expiration is not None
+
     first_verified_at = first_response.json()[
         "verified_at"
     ]
@@ -607,6 +627,9 @@ def test_verification_is_idempotent_for_same_transaction(
         transaction_id
     )
     assert second_data["verified_at"] == first_verified_at
+    db.refresh(pending_subscription)
+
+    assert pending_subscription.expires_at == first_expiration
 
 
 def test_verified_payment_rejects_different_transaction_id(
@@ -1047,3 +1070,116 @@ def test_flutterwave_transaction_cannot_be_reused(
     assert payment.status == "pending"
     assert payment.flutterwave_transaction_id is None
     assert pending_subscription.status == "pending"
+
+
+
+def test_payment_initialization_requires_term_closing_date(
+    client,
+    db,
+    school_admin,
+    pending_subscription,
+    second_term,
+):
+    second_term.closing_date = None
+    db.commit()
+
+    token = login(client, school_admin.email)
+
+    response = client.post(
+        "/api/payments/initialize",
+        headers=auth_headers(token),
+        json={"subscription_id": pending_subscription.id},
+    )
+
+    assert response.status_code == 422
+    assert response.json()["detail"] == (
+        "Configure the term closing date before payment"
+    )
+
+
+def test_payment_initialization_rejects_elapsed_term(
+    client,
+    db,
+    school_admin,
+    pending_subscription,
+    second_term,
+):
+    from datetime import date, timedelta
+
+    second_term.closing_date = (
+        date.today() - timedelta(days=30)
+    )
+    db.commit()
+
+    token = login(client, school_admin.email)
+
+    response = client.post(
+        "/api/payments/initialize",
+        headers=auth_headers(token),
+        json={"subscription_id": pending_subscription.id},
+    )
+
+    assert response.status_code == 409
+    assert response.json()["detail"] == (
+        "The academic term subscription period "
+        "has already ended"
+    )
+
+
+
+def test_repeated_payment_verification_preserves_admin_expiration_override(
+    db,
+    active_subscription,
+):
+    from datetime import datetime, timedelta, timezone
+
+    from app.models.payment_transaction import PaymentTransaction
+    from app.services.payment_service import process_verified_payment
+
+    # Simulate an already-activated, successfully paid subscription.
+    original_expiration = (
+        datetime.now(timezone.utc).replace(tzinfo=None)
+        + timedelta(days=30)
+    ).replace(microsecond=0)
+
+    admin_override_expiration = (
+        datetime.now(timezone.utc).replace(tzinfo=None)
+        + timedelta(days=90)
+    ).replace(microsecond=0)
+
+    active_subscription.status = "active"
+    active_subscription.activated_at = datetime.now(
+        timezone.utc
+    ).replace(tzinfo=None)
+    active_subscription.expires_at = admin_override_expiration
+
+    payment = PaymentTransaction(
+        school_id=active_subscription.school_id,
+        subscription_id=active_subscription.id,
+        tx_ref="TEST-OVERRIDE-PRESERVATION-001",
+        flutterwave_transaction_id="987654321",
+        status="successful",
+        verified_at=datetime.now(timezone.utc).replace(tzinfo=None),
+        amount=1000,
+        currency="NGN",
+    )
+
+    db.add(payment)
+    db.commit()
+
+    # Reprocess the same successful transaction.
+    returned_payment, returned_subscription = process_verified_payment(
+        db=db,
+        payment=payment,
+        subscription=active_subscription,
+        transaction_id="987654321",
+    )
+
+    assert returned_payment.id == payment.id
+    assert returned_subscription.id == active_subscription.id
+
+    db.refresh(active_subscription)
+
+    # The existing administrator-approved expiration must survive.
+    assert active_subscription.expires_at == admin_override_expiration
+    assert active_subscription.status == "active"

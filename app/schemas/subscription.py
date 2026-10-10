@@ -13,6 +13,16 @@ class SubscriptionStatusUpdate(BaseModel):
     status: str
 
 
+
+class SubscriptionExpirationOverride(BaseModel):
+    expires_at: datetime
+    reason: str = Field(
+        min_length=10,
+        max_length=500,
+    )
+
+
+
 class SubscriptionResponse(BaseModel):
     id: int
     school_id: int

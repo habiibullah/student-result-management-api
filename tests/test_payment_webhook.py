@@ -208,6 +208,12 @@ def test_webhook_activates_verified_successful_payment(
     assert pending_subscription.status == "active"
     assert pending_subscription.activated_at is not None
 
+    assert pending_subscription.expires_at is not None
+    assert (
+        pending_subscription.expires_at
+        > pending_subscription.activated_at
+    )
+
 
 def test_duplicate_webhook_does_not_process_payment_twice(
     client,
@@ -289,6 +295,10 @@ def test_duplicate_webhook_does_not_process_payment_twice(
     first_verified_at = payment.verified_at
     first_activated_at = pending_subscription.activated_at
 
+    first_expiration = pending_subscription.expires_at
+
+    assert first_expiration is not None
+
     second_response = client.post(
         "/api/payments/webhook",
         headers=headers,
@@ -306,6 +316,7 @@ def test_duplicate_webhook_does_not_process_payment_twice(
     assert pending_subscription.status == "active"
     assert payment.verified_at == first_verified_at
     assert pending_subscription.activated_at == first_activated_at
+    assert pending_subscription.expires_at == first_expiration
 
     assert len(verification_calls) == 1
 

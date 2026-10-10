@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timezone
 
 from fastapi import (
     APIRouter,
@@ -16,13 +16,20 @@ from app.core.dependencies import (
 from app.database.connection import get_db
 from app.models.academic_session import AcademicSession
 from app.models.subscription import Subscription
+from app.models.subscription_expiration_override import (
+    SubscriptionExpirationOverride as SubscriptionExpirationOverrideRecord,
+)
 from app.models.subscription_plan import SubscriptionPlan
 from app.models.term import Term
 from app.models.user import User
 from app.schemas.subscription import (
     SubscriptionCreate,
+    SubscriptionExpirationOverride,
     SubscriptionResponse,
     SubscriptionStatusUpdate,
+)
+from app.services.subscription_expiration import (
+    calculate_subscription_expiration,
 )
 
 
@@ -262,18 +269,121 @@ def update_subscription_status(
                 ),
             )
 
+
+    if normalized_status == "active" and current_status != "active":
+        term = db.scalar(
+            select(Term).where(
+                Term.id == subscription.term_id,
+                Term.academic_session_id
+                == subscription.academic_session_id,
+            )
+        )
+
+        if term is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Subscription academic term not found",
+            )
+
+        activated_at = datetime.utcnow()
+
+        expiration = calculate_subscription_expiration(
+            term.closing_date,
+            activated_at=activated_at,
+        )
+
+        subscription.activated_at = activated_at
+        subscription.expires_at = expiration
+
     subscription.status = normalized_status
 
-    if normalized_status == "active":
-        if subscription.activated_at is None:
-            subscription.activated_at = datetime.utcnow()
-
-    elif (
+    if (
         normalized_status == "pending"
         and current_status == "cancelled"
     ):
-
         subscription.activated_at = None
+        subscription.expires_at = None
+
+    db.commit()
+    db.refresh(subscription)
+
+    return subscription
+
+
+
+@router.patch(
+    "/{subscription_id}/expiration",
+    response_model=SubscriptionResponse,
+)
+def override_subscription_expiration(
+    subscription_id: int,
+    payload: SubscriptionExpirationOverride,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_platform_admin),
+):
+    # Require an explicit timezone to prevent ambiguous dates.
+    if payload.expires_at.tzinfo is None:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail="Expiration date must include a timezone",
+        )
+
+    new_expiration = payload.expires_at.astimezone(
+        timezone.utc
+    ).replace(tzinfo=None)
+
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
+
+    if new_expiration <= now:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail="New expiration date must be in the future",
+        )
+
+    reason = payload.reason.strip()
+
+    if len(reason) < 10:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail="Reason must contain at least 10 characters",
+        )
+
+    subscription = db.scalar(
+        select(Subscription)
+        .where(Subscription.id == subscription_id)
+        .with_for_update()
+    )
+
+    if subscription is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Subscription not found",
+        )
+
+    if subscription.status.strip().lower() != "active":
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Only active subscriptions can be adjusted",
+        )
+
+    previous_expiration = subscription.expires_at
+
+    if previous_expiration == new_expiration:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="New expiration must differ from current expiration",
+        )
+
+    audit_record = SubscriptionExpirationOverrideRecord(
+        subscription_id=subscription.id,
+        admin_user_id=current_user.id,
+        previous_expires_at=previous_expiration,
+        new_expires_at=new_expiration,
+        reason=reason,
+    )
+
+    subscription.expires_at = new_expiration
+    db.add(audit_record)
 
     db.commit()
     db.refresh(subscription)

@@ -15,6 +15,9 @@ from app.models.term_report_comment import TermReportComment
 from app.models.school import School
 from app.models.subscription_plan import SubscriptionPlan
 from app.models.subscription import Subscription
+from app.models.subscription_expiration_override import (
+    SubscriptionExpirationOverride,
+)
 from app.models.result_publication import ResultPublication
 from app.models.published_report_snapshot import PublishedReportSnapshot
 from app.models.grading_scale import GradingScale
@@ -41,6 +44,7 @@ __all__ = [
     "TermReportComment",
     "SubscriptionPlan",
     "Subscription",
+    "SubscriptionExpirationOverride",
     "ResultPublication",
     "School",
     "PublishedReportSnapshot",

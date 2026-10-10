@@ -7,9 +7,13 @@ from sqlalchemy.orm import Session
 
 from app.models.payment_transaction import PaymentTransaction
 from app.models.subscription import Subscription
+from app.models.term import Term
 from app.services.flutterwave_service import (
     FlutterwaveServiceError,
     verify_transaction,
+)
+from app.services.subscription_expiration import (
+    calculate_subscription_expiration,
 )
 
 
@@ -165,6 +169,29 @@ def process_verified_payment(
 
     now = datetime.utcnow()
 
+
+    # Retrieve the academic term associated with the subscription.
+    term = db.scalar(
+        select(Term).where(
+            Term.id == subscription.term_id,
+            Term.academic_session_id
+            == subscription.academic_session_id,
+        )
+    )
+
+    if term is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Subscription academic term not found",
+        )
+
+    # Calculate the end of the 14-day administrative grace period.
+    expiration = calculate_subscription_expiration(
+        term.closing_date,
+        activated_at=now,
+    )
+
+
     payment.flutterwave_transaction_id = provider_transaction_id
     payment.status = "successful"
     payment.verified_at = now
@@ -173,7 +200,7 @@ def process_verified_payment(
 
     if subscription.activated_at is None:
         subscription.activated_at = now
-
+        subscription.expires_at = expiration
     try:
         db.commit()
         db.refresh(payment)

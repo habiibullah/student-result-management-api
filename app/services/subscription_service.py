@@ -1,3 +1,5 @@
+from datetime import datetime, timezone
+
 from fastapi import HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -20,6 +22,7 @@ def require_active_term_subscription(
         )
     )
 
+
     if subscription is None:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -27,6 +30,20 @@ def require_active_term_subscription(
                 "An active subscription is required "
                 "for this academic term"
             ),
+        )
+
+    # Subscription timestamps are stored as naive UTC.
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
+
+    # Temporarily preserve access for legacy subscriptions
+    # that were activated before expiration tracking existed.
+    if (
+        subscription.expires_at is not None
+        and subscription.expires_at <= now
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="The subscription for this academic term has expired",
         )
 
     return subscription

@@ -1,5 +1,6 @@
 import os
 from decimal import Decimal
+from datetime import date, timedelta
 
 import pytest
 from fastapi.testclient import TestClient
@@ -503,6 +504,7 @@ def first_term(
     term = Term(
         academic_session_id=academic_session_one.id,
         name="First Term",
+        closing_date=date.today() + timedelta(days=90),
     )
 
     db.add(term)
@@ -520,6 +522,7 @@ def second_term(
     term = Term(
         academic_session_id=academic_session_one.id,
         name="Second Term",
+        closing_date=date.today() + timedelta(days=180),
     )
 
     db.add(term)
@@ -537,6 +540,7 @@ def third_term(
     term = Term(
         academic_session_id=academic_session_one.id,
         name="Third Term",
+        closing_date=date.today() + timedelta(days=270),
     )
 
     db.add(term)

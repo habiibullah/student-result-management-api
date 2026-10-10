@@ -5,6 +5,10 @@ from app.services.subscription_service import (
     require_active_term_subscription,
 )
 
+from app.services.subscription_expiration import (
+    calculate_subscription_expiration,
+)
+
 
 def login(
     client,
@@ -59,6 +63,77 @@ def test_active_term_subscription_is_accepted(
 
     assert subscription.id == active_subscription.id
     assert subscription.status == "active"
+
+
+
+from datetime import datetime, timedelta, timezone
+
+
+def test_active_subscription_with_future_expiration_is_accepted(
+    db,
+    school_one,
+    academic_session_one,
+    first_term,
+    active_subscription,
+):
+    active_subscription.expires_at = (
+        datetime.now(timezone.utc).replace(tzinfo=None)
+        + timedelta(days=1)
+    )
+    db.commit()
+
+    subscription = require_active_term_subscription(
+        db=db,
+        school_id=school_one.id,
+        academic_session_id=academic_session_one.id,
+        term_id=first_term.id,
+    )
+
+    assert subscription.id == active_subscription.id
+
+
+def test_active_subscription_with_past_expiration_is_rejected(
+    db,
+    school_one,
+    academic_session_one,
+    first_term,
+    active_subscription,
+):
+    active_subscription.expires_at = (
+        datetime.now(timezone.utc).replace(tzinfo=None)
+        - timedelta(seconds=1)
+    )
+    db.commit()
+
+    with pytest.raises(HTTPException) as exc_info:
+        require_active_term_subscription(
+            db=db,
+            school_id=school_one.id,
+            academic_session_id=academic_session_one.id,
+            term_id=first_term.id,
+        )
+
+    assert exc_info.value.status_code == 403
+
+
+def test_legacy_active_subscription_without_expiration_is_accepted(
+    db,
+    school_one,
+    academic_session_one,
+    first_term,
+    active_subscription,
+):
+    assert active_subscription.expires_at is None
+
+    subscription = require_active_term_subscription(
+        db=db,
+        school_id=school_one.id,
+        academic_session_id=academic_session_one.id,
+        term_id=first_term.id,
+    )
+
+    assert subscription.id == active_subscription.id
+
 
 
 def test_pending_subscription_is_rejected(
@@ -305,6 +380,7 @@ def test_platform_admin_can_activate_pending_subscription(
     client,
     platform_admin,
     pending_subscription,
+    second_term,
 ):
     token = login(
         client,
@@ -329,12 +405,31 @@ def test_platform_admin_can_activate_pending_subscription(
     assert data["status"] == "active"
     assert data["activated_at"] is not None
 
+    assert data["expires_at"] is not None
+
+    expected_expiration = calculate_subscription_expiration(
+        second_term.closing_date,
+    )
+
+    assert datetime.fromisoformat(
+        data["expires_at"]
+    ) == expected_expiration
+
+
 
 def test_subscription_status_update_is_idempotent(
     client,
     platform_admin,
     active_subscription,
+    db,
 ):
+    original_expiration = datetime.now(
+        timezone.utc
+    ).replace(tzinfo=None) + timedelta(days=30)
+
+    active_subscription.expires_at = original_expiration
+    db.commit()
+
     token = login(
         client,
         platform_admin.email,
@@ -353,6 +448,10 @@ def test_subscription_status_update_is_idempotent(
 
     assert response.status_code == 200
     assert response.json()["status"] == "active"
+
+    db.refresh(active_subscription)
+
+    assert active_subscription.expires_at == original_expiration
 
 
 def test_invalid_pending_to_expired_transition_is_blocked(

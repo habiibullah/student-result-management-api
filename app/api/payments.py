@@ -23,6 +23,7 @@ from app.database.connection import get_db
 from app.models.payment_transaction import PaymentTransaction
 from app.models.school import School
 from app.models.subscription import Subscription
+from app.models.term import Term
 from app.models.subscription_plan import SubscriptionPlan
 from app.models.user import User
 from app.schemas.payment import (
@@ -39,6 +40,9 @@ from app.services.flutterwave_service import (
     verify_transaction,
 )
 from app.services.payment_service import process_verified_payment
+from app.services.subscription_expiration import (
+    calculate_subscription_expiration,
+)
 
 router = APIRouter(
     prefix="/api/payments",
@@ -78,6 +82,28 @@ def initialize_subscription_payment(
                 "a pending subscription"
             ),
         )
+
+
+    # Validate the academic term before opening checkout.
+    term = db.scalar(
+        select(Term).where(
+            Term.id == subscription.term_id,
+            Term.academic_session_id
+            == subscription.academic_session_id,
+        )
+    )
+
+    if term is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Subscription academic term not found",
+        )
+
+    calculate_subscription_expiration(
+        term.closing_date,
+        activated_at=datetime.utcnow(),
+    )
+
 
     plan = db.scalar(
         select(SubscriptionPlan).where(
@@ -674,6 +700,26 @@ async def flutterwave_webhook(
 
     now = datetime.utcnow()
 
+    # Retrieve the subscription's academic term.
+    term = db.scalar(
+        select(Term).where(
+            Term.id == subscription.term_id,
+            Term.academic_session_id
+            == subscription.academic_session_id,
+        )
+    )
+
+    if term is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Subscription academic term not found",
+        )
+
+    expiration = calculate_subscription_expiration(
+        term.closing_date,
+        activated_at=now,
+    )
+
     payment.flutterwave_transaction_id = transaction_id
     payment.status = "successful"
     payment.verified_at = now
@@ -682,6 +728,7 @@ async def flutterwave_webhook(
 
     if subscription.activated_at is None:
         subscription.activated_at = now
+        subscription.expires_at = expiration
 
     try:
         db.commit()
