@@ -1055,3 +1055,176 @@ def test_failed_audit_insert_rolls_back_expiration(
     ).all()
 
     assert records == []
+
+
+def test_platform_admin_can_view_expiration_history(
+    client,
+    db,
+    platform_admin,
+    active_subscription,
+):
+    token = login(client, platform_admin.email)
+
+    previous_expiration = datetime(
+        2027, 8, 10, 23, 0
+    )
+    new_expiration = datetime(
+        2027, 8, 16, 9, 0
+    )
+
+    record = SubscriptionExpirationOverride(
+        subscription_id=active_subscription.id,
+        admin_user_id=platform_admin.id,
+        previous_expires_at=previous_expiration,
+        new_expires_at=new_expiration,
+        reason="Approved administrative extension",
+    )
+
+    db.add(record)
+    db.commit()
+
+    response = client.get(
+        f"/api/subscriptions/{active_subscription.id}/expiration-history",
+        headers={
+            "Authorization": f"Bearer {token}",
+        },
+    )
+
+    assert response.status_code == 200, response.text
+
+    history = response.json()
+
+    assert len(history) == 1
+    assert history[0]["subscription_id"] == active_subscription.id
+    assert history[0]["admin_user_id"] == platform_admin.id
+    assert history[0]["previous_expires_at"] == (
+        previous_expiration.isoformat()
+    )
+    assert history[0]["new_expires_at"] == (
+        new_expiration.isoformat()
+    )
+    assert history[0]["reason"] == (
+        "Approved administrative extension"
+    )
+    assert history[0]["created_at"] is not None
+
+
+# ============================================================
+# SUBSCRIPTION EXPIRATION HISTORY TESTS
+# ============================================================
+
+
+def test_school_admin_cannot_view_expiration_history(
+    client,
+    school_admin,
+    active_subscription,
+):
+    token = login(client, school_admin.email)
+
+    response = client.get(
+        f"/api/subscriptions/{active_subscription.id}/expiration-history",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    assert response.status_code == 403
+
+
+def test_unauthenticated_user_cannot_view_expiration_history(
+    client,
+    active_subscription,
+):
+    response = client.get(
+        f"/api/subscriptions/{active_subscription.id}/expiration-history"
+    )
+
+    assert response.status_code in (401, 403)
+
+
+def test_expiration_history_returns_404_for_missing_subscription(
+    client,
+    platform_admin,
+):
+    token = login(client, platform_admin.email)
+
+    response = client.get(
+        "/api/subscriptions/999999/expiration-history",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    assert response.status_code == 404
+    assert response.json()["detail"] == "Subscription not found"
+
+
+def test_expiration_history_returns_empty_list_when_no_overrides(
+    client,
+    platform_admin,
+    active_subscription,
+):
+    token = login(client, platform_admin.email)
+
+    response = client.get(
+        f"/api/subscriptions/{active_subscription.id}/expiration-history",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    assert response.status_code == 200, response.text
+    assert response.json() == []
+
+
+def test_expiration_history_returns_newest_first(
+    client,
+    db,
+    platform_admin,
+    active_subscription,
+):
+    token = login(client, platform_admin.email)
+
+    first_record = SubscriptionExpirationOverride(
+        subscription_id=active_subscription.id,
+        admin_user_id=platform_admin.id,
+        previous_expires_at=datetime(2027, 8, 10, 23, 0),
+        new_expires_at=datetime(2027, 8, 15, 9, 0),
+        reason="First administrative extension",
+        created_at=datetime(2026, 10, 10, 8, 30),
+    )
+
+    second_record = SubscriptionExpirationOverride(
+        subscription_id=active_subscription.id,
+        admin_user_id=platform_admin.id,
+        previous_expires_at=datetime(2027, 8, 15, 9, 0),
+        new_expires_at=datetime(2027, 8, 16, 9, 0),
+        reason="Second administrative extension",
+        created_at=datetime(2026, 10, 10, 9, 30),
+    )
+
+    db.add_all([first_record, second_record])
+    db.commit()
+
+    response = client.get(
+        f"/api/subscriptions/{active_subscription.id}/expiration-history",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    assert response.status_code == 200, response.text
+
+    history = response.json()
+
+    assert len(history) == 2
+
+    # Newest override must appear first.
+    assert history[0]["reason"] == (
+        "Second administrative extension"
+    )
+    assert history[1]["reason"] == (
+        "First administrative extension"
+    )
+
+    assert history[0]["new_expires_at"] == (
+        "2027-08-16T09:00:00"
+    )
+    assert history[1]["new_expires_at"] == (
+        "2027-08-15T09:00:00"
+    )
+
+    assert history[0]["id"] == second_record.id
+    assert history[1]["id"] == first_record.id

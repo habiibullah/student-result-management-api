@@ -24,6 +24,7 @@ from app.models.term import Term
 from app.models.user import User
 from app.schemas.subscription import (
     SubscriptionCreate,
+    SubscriptionExpirationHistoryResponse,
     SubscriptionExpirationOverride,
     SubscriptionResponse,
     SubscriptionStatusUpdate,
@@ -389,3 +390,34 @@ def override_subscription_expiration(
     db.refresh(subscription)
 
     return subscription
+
+@router.get(
+    "/{subscription_id}/expiration-history",
+    response_model=list[SubscriptionExpirationHistoryResponse],
+)
+def get_subscription_expiration_history(
+    subscription_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_platform_admin),
+):
+    subscription = db.get(Subscription, subscription_id)
+
+    if subscription is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Subscription not found",
+        )
+
+    history = db.scalars(
+        select(SubscriptionExpirationOverrideRecord)
+        .where(
+            SubscriptionExpirationOverrideRecord.subscription_id
+            == subscription_id
+        )
+        .order_by(
+            SubscriptionExpirationOverrideRecord.created_at.desc(),
+            SubscriptionExpirationOverrideRecord.id.desc(),
+        )
+    ).all()
+
+    return list(history)
