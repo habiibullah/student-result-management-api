@@ -5,13 +5,19 @@ from sqlalchemy.orm import Session
 
 from app.core.dependencies import get_current_user, require_school_admin
 from app.database.connection import get_db
+
 from app.models import (
     AcademicSession,
     Class,
     ClassTeacherAssignment,
     Enrollment,
+    PublishedReportSnapshot,
     Student,
+    StudentAttendance,
+    StudentBehaviouralAssessment,
+    StudentScore,
     Teacher,
+    TermReportComment,
     User,
 )
 
@@ -777,6 +783,35 @@ def delete_student(
                 "Delete the enrollments first."
             ),
         )
+
+    # ---------------------------------------------------------
+    # PROTECT STUDENT ACADEMIC HISTORY
+    # ---------------------------------------------------------
+
+    academic_models = (
+        StudentScore,
+        StudentAttendance,
+        StudentBehaviouralAssessment,
+        TermReportComment,
+        PublishedReportSnapshot,
+    )
+
+    for model in academic_models:
+        record_exists = db.scalar(
+            select(model.id)
+            .where(model.student_id == student.id)
+            .limit(1)
+        )
+
+        if record_exists is not None:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=(
+                    "Student cannot be deleted because "
+                    "academic records exist. "
+                    "Preserve the student's academic history."
+                ),
+            )
 
     # ---------------------------------------------------------
     # 3. DELETE STUDENT
